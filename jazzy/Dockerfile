@@ -15,7 +15,7 @@
 # This Dockerfile is adapted from https://github.com/Tiryoh/docker-ros2-desktop-vnc/tree/master
 # which is released under the Apache-2.0 license.
 
-FROM ubuntu:noble-20241118.1
+FROM ubuntu:noble-20260324
 
 # Automatic platform ARGs in the global scope
 # https://docs.docker.com/reference/dockerfile/#automatic-platform-args-in-the-global-scope
@@ -26,133 +26,131 @@ ARG TARGETARCH
 # amd64 is unaffected as it does not use QEMU.
 # This environment variable is only declared at build time.
 ARG QEMU_CPU
+ARG INSTALL_PACKAGE=desktop
 
 LABEL maintainer="Sylvain ARGENTIERI<sylvain.argentieri@sorbonne-universite.fr>"
 
-SHELL ["/bin/bash", "-c"]
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Upgrade OS
+ENV DEBIAN_FRONTEND=noninteractive
+ENV ROS_DISTRO=jazzy
+ENV USER=turtle
+
+# Base system and desktop environment
 RUN apt-get update -q && \
-    DEBIAN_FRONTEND=noninteractive apt-get upgrade -y && \
-    apt-get autoclean && \
-    apt-get autoremove && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+    ubuntu-mate-core \
+    bash-completion \
+    build-essential \
+    ca-certificates \
+    curl \
+    dos2unix \
+    git \
+    gnupg2 \
+    gosu \
+    iputils-ping \
+    locales \
+    lsb-release \
+    nano \
+    nextcloud-desktop \
+    python3-full \
+    python3-pip \
+    sudo \
+    supervisor \
+    terminator \
+    tigervnc-common \
+    tigervnc-standalone-server \
+    tigervnc-tools \
+    tini \
+    tzdata \
+    vim \
+    wget && \
+    locale-gen en_US.UTF-8 && \
     rm -rf /var/lib/apt/lists/*
 
-# Install things
-RUN apt-get update -q && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        curl \
-        gnupg2 \ 
-        lsb-release \
-        ca-certificates && \
-    apt-get autoclean && \
-    apt-get autoremove && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install Ubuntu Mate desktop
-RUN apt-get update -q && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        ubuntu-mate-desktop && \
-    apt-get autoclean && \
-    apt-get autoremove && \
-    rm -rf /var/lib/apt/lists/*
-
-# Add Package
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        tigervnc-standalone-server tigervnc-common \
-        supervisor wget gosu git sudo python3-full python3-pip tini \
-        build-essential vim sudo lsb-release locales \
-        bash-completion tzdata nano nextcloud-desktop terminator \ 
-        iputils-ping dos2unix && \
-    apt-get autoclean && \
-    apt-get autoremove && \
-    rm -rf /var/lib/apt/lists/*
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
 
 # noVNC and Websockify
-RUN git clone https://github.com/AtsushiSaito/noVNC.git -b add_clipboard_support /usr/lib/novnc
-RUN pip install --no-cache-dir --break-system-packages git+https://github.com/novnc/websockify.git@v0.10.0
-RUN ln -s /usr/lib/novnc/vnc.html /usr/lib/novnc/index.html
-
-# Set remote resize function enabled by default
-RUN sed -i "s/UI.initSetting('resize', 'off');/UI.initSetting('resize', 'remote');/g" /usr/lib/novnc/app/ui.js
+RUN git clone --depth 1 --branch add_clipboard_support https://github.com/AtsushiSaito/noVNC.git /usr/lib/novnc && \
+    python3 -m pip install --no-cache-dir --break-system-packages git+https://github.com/novnc/websockify.git@v0.10.0 && \
+    ln -s /usr/lib/novnc/vnc.html /usr/lib/novnc/index.html && \
+    sed -i "s/UI.initSetting('resize', 'off');/UI.initSetting('resize', 'remote');/g" /usr/lib/novnc/app/ui.js
 
 # Disable auto update and crash report
-RUN sed -i 's/Prompt=.*/Prompt=never/' /etc/update-manager/release-upgrades
-RUN sed -i 's/enabled=1/enabled=0/g' /etc/default/apport
+RUN sed -i 's/Prompt=.*/Prompt=never/' /etc/update-manager/release-upgrades && \
+    if [ -f /etc/default/apport ]; then sed -i 's/enabled=1/enabled=0/g' /etc/default/apport; fi
 
 # Install Firefox
-RUN wget -q https://packages.mozilla.org/apt/repo-signing-key.gpg \
-    -O /etc/apt/keyrings/packages.mozilla.org.asc && \
+RUN install -d -m 0755 /etc/apt/keyrings && \
+    wget -q https://packages.mozilla.org/apt/repo-signing-key.gpg -O /etc/apt/keyrings/packages.mozilla.org.asc && \
     echo "deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main" \
-    | tee -a /etc/apt/sources.list.d/mozilla-apt.list && \
-    echo 'Package: *Pin: origin packages.mozilla.orgPin-Priority: 900' \
-    | tee /etc/apt/preferences.d/mozilla-apt && \
+    > /etc/apt/sources.list.d/mozilla-apt.list && \
+    printf 'Package: *\nPin: origin packages.mozilla.org\nPin-Priority: 900\n' \
+    > /etc/apt/preferences.d/mozilla-apt && \
     apt-get update -q && \
-    apt-get install -y \
-        firefox && \
-    apt-get autoclean && \
-    apt-get autoremove && \
+    apt-get install -y firefox && \
     rm -rf /var/lib/apt/lists/*
 
 # Install VSCodium
-RUN wget https://gitlab.com/paulcarroty/vscodium-deb-rpm-repo/raw/master/pub.gpg \
+RUN wget -q https://gitlab.com/paulcarroty/vscodium-deb-rpm-repo/raw/master/pub.gpg \
     -O /usr/share/keyrings/vscodium-archive-keyring.asc && \
-    echo 'deb [ signed-by=/usr/share/keyrings/vscodium-archive-keyring.asc ] https://paulcarroty.gitlab.io/vscodium-deb-rpm-repo/debs vscodium main' \
-    | tee /etc/apt/sources.list.d/vscodium.list && \
+    echo "deb [signed-by=/usr/share/keyrings/vscodium-archive-keyring.asc] https://paulcarroty.gitlab.io/vscodium-deb-rpm-repo/debs vscodium main" \
+    > /etc/apt/sources.list.d/vscodium.list && \
     apt-get update -q && \
     apt-get install -y codium && \
-    apt-get autoclean && \
-    apt-get autoremove && \
     rm -rf /var/lib/apt/lists/*
 
-# Install ROS
-ENV ROS_DISTRO jazzy
-# desktop or ros-base
-ARG INSTALL_PACKAGE=desktop
-
-RUN apt-get update -q && \
-    curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null && \
-    apt-get update -q && \
-    apt-get install -y \ 
-        ros-${ROS_DISTRO}-${INSTALL_PACKAGE} \
-        #ros-${ROS_DISTRO}-turtlebot3-msgs \ # NOT AVAILABLE
-        #ros-${ROS_DISTRO}-turtlebot3-description \ # NOT AVAILABLE
-        python3-argcomplete \
-        python3-colcon-common-extensions \
-        python3-rosdep python3-vcstool && \
-    rosdep init && \
-    rm -rf /var/lib/apt/lists/*
-
-RUN rosdep update
-
-# Install gazebo
-RUN curl https://packages.osrfoundation.org/gazebo.gpg --output /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] http://packages.osrfoundation.org/gazebo/ubuntu-stable $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/gazebo-stable.list > /dev/null && \
+# Install ROS 2 Jazzy
+RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+    -o /usr/share/keyrings/ros-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" \
+    > /etc/apt/sources.list.d/ros2.list && \
+    echo "deb [trusted=yes] https://download.eclipse.org/zenoh/debian-repo/ /" \
+    > /etc/apt/sources.list.d/eclipse-zenoh.list && \
     apt-get update -q && \
     apt-get install -y \
-        gz-harmonic \
-        ros-${ROS_DISTRO}-ros-gz && \
-    apt-get autoclean && \
-    apt-get autoremove && \
+    ros-${ROS_DISTRO}-${INSTALL_PACKAGE} \
+    python3-argcomplete \
+    python3-colcon-common-extensions \
+    python3-rosdep \
+    zenoh-bridge-ros2dds \
+    python3-vcstool && \
+    rosdep init && \
+    rosdep update && \
     rm -rf /var/lib/apt/lists/*
 
-# Install zenoh-bridge-ros2dds
-RUN echo "deb [trusted=yes] https://download.eclipse.org/zenoh/debian-repo/ /" | sudo tee -a /etc/apt/sources.list > /dev/null && \
-    apt-get update -q && \
-    apt-get install -y zenoh-bridge-ros2dds && \
-    apt-get autoclean && \
-    apt-get autoremove && \
-    rm -rf /var/lib/apt/lists/*
+# # Install Gazebo
+# RUN curl -sSL https://packages.osrfoundation.org/gazebo.gpg \
+#         -o /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg && \
+#     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] http://packages.osrfoundation.org/gazebo/ubuntu-stable $(lsb_release -cs) main" \
+#         > /etc/apt/sources.list.d/gazebo-stable.list && \
+#     apt-get update -q && \
+#     apt-get install -y \
+#         gz-harmonic \
+#         ros-${ROS_DISTRO}-ros-gz && \
+#     rm -rf /var/lib/apt/lists/*
 
 # Enable apt-get completion after running `apt-get update` in the container
-RUN rm /etc/apt/apt.conf.d/docker-clean
+RUN rm -f /etc/apt/apt.conf.d/docker-clean
 
-COPY --chmod=755 ./entrypoint.sh /
+COPY --chmod=644 ./config/bashrc.ros2_desktop_vnc.sh /etc/ros-desktop-vnc/bashrc.sh
+COPY --chmod=644 ./config/colcon-defaults.yaml /etc/ros-desktop-vnc/colcon-defaults.yaml
+COPY --chmod=755 ./desktop/ /usr/local/share/ros-desktop-vnc/desktop/
+
+RUN chmod 755 /etc/ros-desktop-vnc /usr/local/share/ros-desktop-vnc /usr/local/share/ros-desktop-vnc/desktop
+
+RUN install -d /etc/skel/.colcon /etc/skel/Desktop /etc/skel/ros2_ws/src \
+    /root/.colcon /root/Desktop /root/ros2_ws/src && \
+    cp /etc/ros-desktop-vnc/colcon-defaults.yaml /etc/skel/.colcon/defaults.yaml && \
+    cp /etc/ros-desktop-vnc/colcon-defaults.yaml /root/.colcon/defaults.yaml && \
+    cp /usr/local/share/ros-desktop-vnc/desktop/*.desktop /etc/skel/Desktop/ && \
+    cp /usr/local/share/ros-desktop-vnc/desktop/*.desktop /root/Desktop/ && \
+    printf '\nif [ -f /etc/ros-desktop-vnc/bashrc.sh ]; then\n  source /etc/ros-desktop-vnc/bashrc.sh\nfi\n' >> /etc/skel/.bashrc && \
+    printf '\nif [ -f /etc/ros-desktop-vnc/bashrc.sh ]; then\n  source /etc/ros-desktop-vnc/bashrc.sh\nfi\n' >> /root/.bashrc
+
+COPY --chmod=755 ./entrypoint.sh /entrypoint.sh
 RUN dos2unix /entrypoint.sh
-RUN ["chmod", "+x", "/entrypoint.sh"]
-ENTRYPOINT [ "/bin/bash", "-c", "/entrypoint.sh" ]
 
-ENV USER turtle
-ENV PASSWD turtlebot
+ENTRYPOINT ["/entrypoint.sh"]

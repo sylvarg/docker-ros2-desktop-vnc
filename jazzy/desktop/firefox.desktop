@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Name=Firefox
+Comment=Browse the web
+Exec=firefox %u
+Terminal=false
+Type=Application
+Icon=firefox
+Categories=GNOME;GTK;Network;WebBrowser;
+StartupNotify=true
