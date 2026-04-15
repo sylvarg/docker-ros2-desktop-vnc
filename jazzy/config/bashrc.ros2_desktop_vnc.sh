@@ -13,3 +13,5 @@ fi
 
 alias zenoh='zenoh-bridge-ros2dds -e tcp/$ROBOT_IP:7447'
 alias colcon_clear='rm -rf build install log'
+alias sb='source ~/.bashrc'
+alias eb='nano ~/.bashrc'
