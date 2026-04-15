@@ -2,10 +2,16 @@
 Name=VSCodium
 Comment=Code Editing. Redefined.
 GenericName=Text Editor
-Exec=codium %F
+Exec=/usr/share/codium/codium --no-sandbox %F
 Icon=vscodium
 Type=Application
 StartupNotify=false
 StartupWMClass=VSCodium
 Categories=TextEditor;Development;IDE;
 MimeType=text/plain;inode/directory;application/x-codium-workspace;
+Actions=new-empty-window;
+
+[Desktop Action new-empty-window]
+Name=New Empty Window
+Exec=/usr/share/codium/codium --no-sandbox --new-window %F
+Icon=vscodium

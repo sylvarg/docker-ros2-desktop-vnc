@@ -1,0 +1,19 @@
+services:
+  ros-desktop-vnc-jazzy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ros2-desktop-vnc:jazzy
+    environment:
+      TZ: "Europe/Paris"
+      VNC_NO_PASSWORD: "true"
+    shm_size: "512m"
+    restart: unless-stopped
+    container_name: ros2_desktop_vnc_jazzy
+    hostname: remotepc
+    extra_hosts:
+      - "remotepc:127.0.0.1"
+    ports:
+      - "6080:6080"
+    # volumes:
+    #   - /path/to/your/ws/src:/home/turtle/ros2_ws/src

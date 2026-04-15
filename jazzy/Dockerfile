@@ -34,6 +34,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV ROS_DISTRO=jazzy
+ENV TZ=Europe/Paris
 ENV USER=turtle
 
 # Base system and desktop environment
@@ -135,13 +136,25 @@ RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
 # Enable apt-get completion after running `apt-get update` in the container
 RUN rm -f /etc/apt/apt.conf.d/docker-clean
 
-COPY --chmod=644 ./config/bashrc.ros2_desktop_vnc.sh /etc/ros-desktop-vnc/bashrc.sh
-COPY --chmod=644 ./config/colcon-defaults.yaml /etc/ros-desktop-vnc/colcon-defaults.yaml
-COPY --chmod=755 ./desktop/ /usr/local/share/ros-desktop-vnc/desktop/
+ # Shell initialization shared by root and the runtime user.
+ COPY --chmod=644 ./config/bashrc.ros2_desktop_vnc.sh /etc/ros-desktop-vnc/bashrc.sh
+ # Default colcon configuration copied into user workspaces.
+ COPY --chmod=644 ./config/colcon-defaults.yaml /etc/ros-desktop-vnc/colcon-defaults.yaml
+ # GLib schema overrides for MATE panel and desktop defaults.
+ COPY --chmod=644 ./config/90_ros2-desktop-vnc.gschema.override /usr/share/glib-2.0/schemas/90_ros2-desktop-vnc.gschema.override
+ # Custom MATE panel layout with the launchers used by this image.
+ COPY --chmod=644 ./config/ros2-desktop-vnc.layout /usr/share/mate-panel/layouts/ros2-desktop-vnc.layout
+ # Wallpaper assets used as the default desktop background.
+ COPY --chmod=644 ./background/ /usr/local/share/ros-desktop-vnc/background/
+ # Desktop launcher entries exposed on the panel and desktop.
+ COPY --chmod=755 ./desktop/ /usr/local/share/ros-desktop-vnc/desktop/
 
-RUN chmod 755 /etc/ros-desktop-vnc /usr/local/share/ros-desktop-vnc /usr/local/share/ros-desktop-vnc/desktop
+ # Compile the updated GLib schemas and fix permissions on shared asset directories.
+ RUN glib-compile-schemas /usr/share/glib-2.0/schemas && \
+    chmod 755 /etc/ros-desktop-vnc /usr/local/share/ros-desktop-vnc /usr/local/share/ros-desktop-vnc/background /usr/local/share/ros-desktop-vnc/desktop
 
-RUN install -d /etc/skel/.colcon /etc/skel/Desktop /etc/skel/ros2_ws/src \
+ # Seed root and future user homes with ROS workspace defaults and desktop shortcuts.
+ RUN install -d /etc/skel/.colcon /etc/skel/Desktop /etc/skel/ros2_ws/src \
     /root/.colcon /root/Desktop /root/ros2_ws/src && \
     cp /etc/ros-desktop-vnc/colcon-defaults.yaml /etc/skel/.colcon/defaults.yaml && \
     cp /etc/ros-desktop-vnc/colcon-defaults.yaml /root/.colcon/defaults.yaml && \

@@ -1,0 +1,6 @@
+[org.mate.panel]
+default-layout='ros2-desktop-vnc'
+
+[org.mate.background]
+picture-filename='/usr/local/share/ros-desktop-vnc/background/wallpaper_roscon.png'
+picture-options='zoom'
