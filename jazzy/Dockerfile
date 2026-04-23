@@ -155,6 +155,11 @@ RUN rm -f /etc/apt/apt.conf.d/docker-clean
 COPY --chmod=644 ./config/bashrc.ros2_desktop_vnc.sh /etc/ros-desktop-vnc/bashrc.sh
 # Default colcon configuration copied into user workspaces.
 COPY --chmod=644 ./config/colcon-defaults.yaml /etc/ros-desktop-vnc/colcon-defaults.yaml
+# Runtime templates copied by the entrypoint into the user home and Supervisor.
+COPY --chmod=755 ./config/xstartup.sh /etc/ros-desktop-vnc/xstartup.sh
+COPY --chmod=755 ./config/vnc_run.sh /etc/ros-desktop-vnc/vnc_run.sh
+COPY --chmod=644 ./config/webots-default.conf /etc/ros-desktop-vnc/webots-default.conf
+COPY --chmod=644 ./config/supervisord.conf.template /etc/ros-desktop-vnc/supervisord.conf.template
 # GLib schema overrides for MATE panel and desktop defaults.
 COPY --chmod=644 ./config/90_ros2-desktop-vnc.gschema.override /usr/share/glib-2.0/schemas/90_ros2-desktop-vnc.gschema.override
 # Custom MATE panel layout with the launchers used by this image.

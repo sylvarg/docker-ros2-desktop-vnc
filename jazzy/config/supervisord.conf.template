@@ -1,0 +1,13 @@
+[supervisord]
+nodaemon=true
+user=root
+
+[program:vnc]
+command=gosu __CONTAINER_USER__ bash __VNC_RUN_PATH__
+priority=10
+autorestart=true
+
+[program:novnc]
+command=gosu __CONTAINER_USER__ bash -lc "websockify --web=/usr/lib/novnc 6080 localhost:5901"
+priority=20
+autorestart=true

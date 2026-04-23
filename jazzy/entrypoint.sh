@@ -173,6 +173,7 @@ configure_vnc() {
     local vnc_dir="$HOME_DIR/.vnc"
     local xstartup_path="$vnc_dir/xstartup"
     local vncrun_path="$vnc_dir/vnc_run.sh"
+    local config_dir="/etc/ros-desktop-vnc"
 
     mkdir -p "$vnc_dir"
     if is_true "$VNC_NO_PASSWORD"; then
@@ -183,38 +184,9 @@ configure_vnc() {
         chmod 600 "$vnc_dir/passwd"
     fi
 
-    cat > "$xstartup_path" <<'EOF'
-#!/bin/sh
-unset DBUS_SESSION_BUS_ADDRESS
-mate-session
-EOF
-    chmod 755 "$xstartup_path"
-
-    cat > "$vncrun_path" <<'EOF'
-#!/usr/bin/env bash
-set -e
-
-rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
-
-if [[ "$(uname -m)" == "aarch64" ]]; then
-    export LD_PRELOAD=/lib/aarch64-linux-gnu/libgcc_s.so.1
-fi
-
-export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-
-security_args=()
-case "${VNC_NO_PASSWORD:-true}" in
-    1|true|TRUE|yes|YES|on|ON)
-        security_args=(-SecurityTypes None)
-        ;;
-    *)
-        security_args=(-rfbauth "$HOME/.vnc/passwd")
-        ;;
-esac
-
-exec vncserver :1 -fg -geometry 1920x1080 -depth 24 "${security_args[@]}"
-EOF
-    chmod 755 "$vncrun_path"
+    copy_if_missing "$config_dir/xstartup.sh" "$xstartup_path" "$CONTAINER_USER"
+    copy_if_missing "$config_dir/vnc_run.sh" "$vncrun_path" "$CONTAINER_USER"
+    chmod 755 "$xstartup_path" "$vncrun_path"
     ensure_owned "$CONTAINER_USER" "$vnc_dir"
 }
 
@@ -242,19 +214,7 @@ configure_webots_preferences() {
 
     mkdir -p "$preferences_dir"
     ensure_owned "$CONTAINER_USER" "$HOME_DIR/.config" "$preferences_dir"
-
-    if [[ ! -e "$preferences_file" ]]; then
-        cat > "$preferences_file" <<'EOF'
-[%General]
-checkWebotsUpdateOnStartup=true
-startupMode=Real-time
-telemetry=false
-theme=webots_classic.qss
-
-[Internal]
-firstLaunch=false
-EOF
-    fi
+    copy_if_missing "/etc/ros-desktop-vnc/webots-default.conf" "$preferences_file" "$CONTAINER_USER"
 
     set_ini_value "$preferences_file" "%General" "checkWebotsUpdateOnStartup" "true"
     set_ini_value "$preferences_file" "%General" "startupMode" "Real-time"
@@ -267,22 +227,12 @@ EOF
 
 configure_supervisor() {
     local vncrun_path="$HOME_DIR/.vnc/vnc_run.sh"
+    local template_path="/etc/ros-desktop-vnc/supervisord.conf.template"
 
-    cat > /etc/supervisor/conf.d/ros-desktop-vnc.conf <<EOF
-[supervisord]
-nodaemon=true
-user=root
-
-[program:vnc]
-command=gosu $CONTAINER_USER bash $vncrun_path
-priority=10
-autorestart=true
-
-[program:novnc]
-command=gosu $CONTAINER_USER bash -lc "websockify --web=/usr/lib/novnc 6080 localhost:5901"
-priority=20
-autorestart=true
-EOF
+    sed \
+        -e "s|__CONTAINER_USER__|$CONTAINER_USER|g" \
+        -e "s|__VNC_RUN_PATH__|$vncrun_path|g" \
+        "$template_path" > /etc/supervisor/conf.d/ros-desktop-vnc.conf
 }
 
 main() {
