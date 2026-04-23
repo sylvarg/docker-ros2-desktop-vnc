@@ -1,15 +1,17 @@
+name: ros-jazzy
 services:
   ros-desktop-vnc-jazzy:
     build:
       context: .
       dockerfile: Dockerfile
     image: ros2-desktop-vnc:jazzy
+    platform: linux/amd64
+    container_name: ros2_desktop_vnc_jazzy
     environment:
       TZ: "Europe/Paris"
       VNC_NO_PASSWORD: "true"
     shm_size: "512m"
     restart: unless-stopped
-    container_name: ros2_desktop_vnc_jazzy
     hostname: remotepc
     extra_hosts:
       - "remotepc:127.0.0.1"

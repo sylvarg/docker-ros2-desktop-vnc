@@ -106,9 +106,11 @@ RUN wget -q https://gitlab.com/paulcarroty/vscodium-deb-rpm-repo/raw/master/pub.
 # Install ROS 2 Jazzy
 RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
     -o /usr/share/keyrings/ros-archive-keyring.gpg && \
+    curl -sSL https://download.eclipse.org/zenoh/debian-repo/zenoh-public-key \
+    | gpg --dearmor --yes -o /usr/share/keyrings/zenoh-public-key.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" \
     > /etc/apt/sources.list.d/ros2.list && \
-    echo "deb [trusted=yes] https://download.eclipse.org/zenoh/debian-repo/ /" \
+    echo "deb [signed-by=/usr/share/keyrings/zenoh-public-key.gpg] https://download.eclipse.org/zenoh/debian-repo/ /" \
     > /etc/apt/sources.list.d/eclipse-zenoh.list && \
     apt-get update -q && \
     apt-get install -y \
@@ -121,6 +123,19 @@ RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
     rosdep init && \
     rosdep update && \
     rm -rf /var/lib/apt/lists/*
+
+# Install Webots ... but only on amd64 since Cyberbotics does not provide arm64 packages at the moment.
+RUN if [[ "$TARGETARCH" == "amd64" ]]; then \
+        wget -q https://cyberbotics.com/Cyberbotics.asc \
+        -O /etc/apt/keyrings/Cyberbotics.asc && \
+        echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/Cyberbotics.asc] https://cyberbotics.com/debian binary-amd64/" \
+        > /etc/apt/sources.list.d/Cyberbotics.list && \
+        apt-get update -q && \
+        apt-get install -y webots && \
+        rm -rf /var/lib/apt/lists/*; \
+    else \
+        echo "Skipping Webots install on unsupported architecture: $TARGETARCH"; \
+    fi
 
 # # Install Gazebo
 # RUN curl -sSL https://packages.osrfoundation.org/gazebo.gpg \
@@ -136,25 +151,25 @@ RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
 # Enable apt-get completion after running `apt-get update` in the container
 RUN rm -f /etc/apt/apt.conf.d/docker-clean
 
- # Shell initialization shared by root and the runtime user.
- COPY --chmod=644 ./config/bashrc.ros2_desktop_vnc.sh /etc/ros-desktop-vnc/bashrc.sh
- # Default colcon configuration copied into user workspaces.
- COPY --chmod=644 ./config/colcon-defaults.yaml /etc/ros-desktop-vnc/colcon-defaults.yaml
- # GLib schema overrides for MATE panel and desktop defaults.
- COPY --chmod=644 ./config/90_ros2-desktop-vnc.gschema.override /usr/share/glib-2.0/schemas/90_ros2-desktop-vnc.gschema.override
- # Custom MATE panel layout with the launchers used by this image.
- COPY --chmod=644 ./config/ros2-desktop-vnc.layout /usr/share/mate-panel/layouts/ros2-desktop-vnc.layout
- # Wallpaper assets used as the default desktop background.
- COPY --chmod=644 ./background/ /usr/local/share/ros-desktop-vnc/background/
- # Desktop launcher entries exposed on the panel and desktop.
- COPY --chmod=755 ./desktop/ /usr/local/share/ros-desktop-vnc/desktop/
+# Shell initialization shared by root and the runtime user.
+COPY --chmod=644 ./config/bashrc.ros2_desktop_vnc.sh /etc/ros-desktop-vnc/bashrc.sh
+# Default colcon configuration copied into user workspaces.
+COPY --chmod=644 ./config/colcon-defaults.yaml /etc/ros-desktop-vnc/colcon-defaults.yaml
+# GLib schema overrides for MATE panel and desktop defaults.
+COPY --chmod=644 ./config/90_ros2-desktop-vnc.gschema.override /usr/share/glib-2.0/schemas/90_ros2-desktop-vnc.gschema.override
+# Custom MATE panel layout with the launchers used by this image.
+COPY --chmod=644 ./config/ros2-desktop-vnc.layout /usr/share/mate-panel/layouts/ros2-desktop-vnc.layout
+# Wallpaper assets used as the default desktop background.
+COPY --chmod=644 ./background/ /usr/local/share/ros-desktop-vnc/background/
+# Desktop launcher entries exposed on the panel and desktop.
+COPY --chmod=755 ./desktop/ /usr/local/share/ros-desktop-vnc/desktop/
 
- # Compile the updated GLib schemas and fix permissions on shared asset directories.
- RUN glib-compile-schemas /usr/share/glib-2.0/schemas && \
+# Compile the updated GLib schemas and fix permissions on shared asset directories.
+RUN glib-compile-schemas /usr/share/glib-2.0/schemas && \
     chmod 755 /etc/ros-desktop-vnc /usr/local/share/ros-desktop-vnc /usr/local/share/ros-desktop-vnc/background /usr/local/share/ros-desktop-vnc/desktop
 
- # Seed root and future user homes with ROS workspace defaults and desktop shortcuts.
- RUN install -d /etc/skel/.colcon /etc/skel/Desktop /etc/skel/ros2_ws/src \
+# Seed root and future user homes with ROS workspace defaults and desktop shortcuts.
+RUN install -d /etc/skel/.colcon /etc/skel/Desktop /etc/skel/ros2_ws/src \
     /root/.colcon /root/Desktop /root/ros2_ws/src && \
     cp /etc/ros-desktop-vnc/colcon-defaults.yaml /etc/skel/.colcon/defaults.yaml && \
     cp /etc/ros-desktop-vnc/colcon-defaults.yaml /root/.colcon/defaults.yaml && \
