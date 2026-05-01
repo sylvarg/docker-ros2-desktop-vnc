@@ -7,6 +7,11 @@ export TURTLEBOT3_MODEL="${TURTLEBOT3_MODEL:-burger}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-30}"
 export ROBOT_IP="${ROBOT_IP:-192.168.0.10}"
 
+if [ -d "/usr/local/webots" ]; then
+  export WEBOTS_HOME="${WEBOTS_HOME:-/usr/local/webots}"
+  export ROS2_WEBOTS_HOME="${ROS2_WEBOTS_HOME:-/usr/local/webots}"
+fi
+
 if [ -f "$HOME/ros2_ws/install/local_setup.bash" ]; then
   source "$HOME/ros2_ws/install/local_setup.bash"
 fi

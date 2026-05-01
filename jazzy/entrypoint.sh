@@ -6,6 +6,7 @@ CONTAINER_USER="${USER:-root}"
 PASSWORD="${PASSWORD:-${PASSWD:-turtlebot}}"
 VNC_NO_PASSWORD="${VNC_NO_PASSWORD:-true}"
 TZ="${TZ:-Europe/Paris}"
+CONFIG_DIR="${ROS_DESKTOP_VNC_DIR:-/etc/ros-desktop-vnc}"
 HOME_DIR="/root"
 USER_UID="0"
 
@@ -153,7 +154,7 @@ ensure_user() {
         "$HOME_DIR/.colcon" \
         "$HOME_DIR/Desktop" \
         "$HOME_DIR/ros2_ws"
-    copy_if_missing "/etc/ros-desktop-vnc/colcon-defaults.yaml" "$HOME_DIR/.colcon/defaults.yaml" "$CONTAINER_USER"
+    copy_if_missing "$CONFIG_DIR/colcon-defaults.yaml" "$HOME_DIR/.colcon/defaults.yaml" "$CONTAINER_USER"
     for desktop_file in /usr/local/share/ros-desktop-vnc/desktop/*.desktop; do
         copy_if_missing "$desktop_file" "$HOME_DIR/Desktop/$(basename "$desktop_file")" "$CONTAINER_USER"
     done
@@ -173,8 +174,6 @@ configure_vnc() {
     local vnc_dir="$HOME_DIR/.vnc"
     local xstartup_path="$vnc_dir/xstartup"
     local vncrun_path="$vnc_dir/vnc_run.sh"
-    local config_dir="/etc/ros-desktop-vnc"
-
     mkdir -p "$vnc_dir"
     if is_true "$VNC_NO_PASSWORD"; then
         rm -f "$vnc_dir/passwd"
@@ -184,8 +183,8 @@ configure_vnc() {
         chmod 600 "$vnc_dir/passwd"
     fi
 
-    copy_if_missing "$config_dir/xstartup.sh" "$xstartup_path" "$CONTAINER_USER"
-    copy_if_missing "$config_dir/vnc_run.sh" "$vncrun_path" "$CONTAINER_USER"
+    copy_if_missing "$CONFIG_DIR/xstartup.sh" "$xstartup_path" "$CONTAINER_USER"
+    copy_if_missing "$CONFIG_DIR/vnc_run.sh" "$vncrun_path" "$CONTAINER_USER"
     chmod 755 "$xstartup_path" "$vncrun_path"
     ensure_owned "$CONTAINER_USER" "$vnc_dir"
 }
@@ -214,7 +213,7 @@ configure_webots_preferences() {
 
     mkdir -p "$preferences_dir"
     ensure_owned "$CONTAINER_USER" "$HOME_DIR/.config" "$preferences_dir"
-    copy_if_missing "/etc/ros-desktop-vnc/webots-default.conf" "$preferences_file" "$CONTAINER_USER"
+    copy_if_missing "$CONFIG_DIR/webots-default.conf" "$preferences_file" "$CONTAINER_USER"
 
     set_ini_value "$preferences_file" "%General" "checkWebotsUpdateOnStartup" "true"
     set_ini_value "$preferences_file" "%General" "startupMode" "Real-time"
@@ -227,7 +226,7 @@ configure_webots_preferences() {
 
 configure_supervisor() {
     local vncrun_path="$HOME_DIR/.vnc/vnc_run.sh"
-    local template_path="/etc/ros-desktop-vnc/supervisord.conf.template"
+    local template_path="$CONFIG_DIR/supervisord.conf.template"
 
     sed \
         -e "s|__CONTAINER_USER__|$CONTAINER_USER|g" \

@@ -36,6 +36,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV ROS_DISTRO=jazzy
 ENV TZ=Europe/Paris
 ENV USER=turtle
+ENV ROS_DESKTOP_VNC_DIR=/etc/ros-desktop-vnc
 
 # Base system and desktop environment
 RUN apt-get update -q && \
@@ -124,17 +125,18 @@ RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
     rosdep update && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Webots ... but only on amd64 since Cyberbotics does not provide arm64 packages at the moment.
+# Install Webots and related ros2 package... but only on amd64 since Cyberbotics does not provide arm64 packages for now
 RUN if [[ "$TARGETARCH" == "amd64" ]]; then \
-        wget -q https://cyberbotics.com/Cyberbotics.asc \
-        -O /etc/apt/keyrings/Cyberbotics.asc && \
-        echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/Cyberbotics.asc] https://cyberbotics.com/debian binary-amd64/" \
-        > /etc/apt/sources.list.d/Cyberbotics.list && \
-        apt-get update -q && \
-        apt-get install -y webots && \
-        rm -rf /var/lib/apt/lists/*; \
+    wget -q https://cyberbotics.com/Cyberbotics.asc \
+    -O /etc/apt/keyrings/Cyberbotics.asc && \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/Cyberbotics.asc] https://cyberbotics.com/debian binary-amd64/" \
+    > /etc/apt/sources.list.d/Cyberbotics.list && \
+    apt-get update -q && \
+    apt-get install -y webots \
+    ros-jazzy-webots-ros2 && \
+    rm -rf /var/lib/apt/lists/*; \
     else \
-        echo "Skipping Webots install on unsupported architecture: $TARGETARCH"; \
+    echo "Skipping Webots install on unsupported architecture: $TARGETARCH"; \
     fi
 
 # # Install Gazebo
@@ -152,14 +154,14 @@ RUN if [[ "$TARGETARCH" == "amd64" ]]; then \
 RUN rm -f /etc/apt/apt.conf.d/docker-clean
 
 # Shell initialization shared by root and the runtime user.
-COPY --chmod=644 ./config/bashrc.ros2_desktop_vnc.sh /etc/ros-desktop-vnc/bashrc.sh
+COPY --chmod=644 ./config/bashrc.ros2_desktop_vnc.sh ${ROS_DESKTOP_VNC_DIR}/bashrc.sh
 # Default colcon configuration copied into user workspaces.
-COPY --chmod=644 ./config/colcon-defaults.yaml /etc/ros-desktop-vnc/colcon-defaults.yaml
+COPY --chmod=644 ./config/colcon-defaults.yaml ${ROS_DESKTOP_VNC_DIR}/colcon-defaults.yaml
 # Runtime templates copied by the entrypoint into the user home and Supervisor.
-COPY --chmod=755 ./config/xstartup.sh /etc/ros-desktop-vnc/xstartup.sh
-COPY --chmod=755 ./config/vnc_run.sh /etc/ros-desktop-vnc/vnc_run.sh
-COPY --chmod=644 ./config/webots-default.conf /etc/ros-desktop-vnc/webots-default.conf
-COPY --chmod=644 ./config/supervisord.conf.template /etc/ros-desktop-vnc/supervisord.conf.template
+COPY --chmod=755 ./config/xstartup.sh ${ROS_DESKTOP_VNC_DIR}/xstartup.sh
+COPY --chmod=755 ./config/vnc_run.sh ${ROS_DESKTOP_VNC_DIR}/vnc_run.sh
+COPY --chmod=644 ./config/webots-default.conf ${ROS_DESKTOP_VNC_DIR}/webots-default.conf
+COPY --chmod=644 ./config/supervisord.conf.template ${ROS_DESKTOP_VNC_DIR}/supervisord.conf.template
 # GLib schema overrides for MATE panel and desktop defaults.
 COPY --chmod=644 ./config/90_ros2-desktop-vnc.gschema.override /usr/share/glib-2.0/schemas/90_ros2-desktop-vnc.gschema.override
 # Custom MATE panel layout with the launchers used by this image.
@@ -171,17 +173,17 @@ COPY --chmod=755 ./desktop/ /usr/local/share/ros-desktop-vnc/desktop/
 
 # Compile the updated GLib schemas and fix permissions on shared asset directories.
 RUN glib-compile-schemas /usr/share/glib-2.0/schemas && \
-    chmod 755 /etc/ros-desktop-vnc /usr/local/share/ros-desktop-vnc /usr/local/share/ros-desktop-vnc/background /usr/local/share/ros-desktop-vnc/desktop
+    chmod 755 ${ROS_DESKTOP_VNC_DIR} /usr/local/share/ros-desktop-vnc /usr/local/share/ros-desktop-vnc/background /usr/local/share/ros-desktop-vnc/desktop
 
 # Seed root and future user homes with ROS workspace defaults and desktop shortcuts.
 RUN install -d /etc/skel/.colcon /etc/skel/Desktop /etc/skel/ros2_ws/src \
     /root/.colcon /root/Desktop /root/ros2_ws/src && \
-    cp /etc/ros-desktop-vnc/colcon-defaults.yaml /etc/skel/.colcon/defaults.yaml && \
-    cp /etc/ros-desktop-vnc/colcon-defaults.yaml /root/.colcon/defaults.yaml && \
+    cp ${ROS_DESKTOP_VNC_DIR}/colcon-defaults.yaml /etc/skel/.colcon/defaults.yaml && \
+    cp ${ROS_DESKTOP_VNC_DIR}/colcon-defaults.yaml /root/.colcon/defaults.yaml && \
     cp /usr/local/share/ros-desktop-vnc/desktop/*.desktop /etc/skel/Desktop/ && \
     cp /usr/local/share/ros-desktop-vnc/desktop/*.desktop /root/Desktop/ && \
-    printf '\nif [ -f /etc/ros-desktop-vnc/bashrc.sh ]; then\n  source /etc/ros-desktop-vnc/bashrc.sh\nfi\n' >> /etc/skel/.bashrc && \
-    printf '\nif [ -f /etc/ros-desktop-vnc/bashrc.sh ]; then\n  source /etc/ros-desktop-vnc/bashrc.sh\nfi\n' >> /root/.bashrc
+    printf '\nif [ -f %s/bashrc.sh ]; then\n  source %s/bashrc.sh\nfi\n' "${ROS_DESKTOP_VNC_DIR}" "${ROS_DESKTOP_VNC_DIR}" >> /etc/skel/.bashrc && \
+    printf '\nif [ -f %s/bashrc.sh ]; then\n  source %s/bashrc.sh\nfi\n' "${ROS_DESKTOP_VNC_DIR}" "${ROS_DESKTOP_VNC_DIR}" >> /root/.bashrc
 
 COPY --chmod=755 ./entrypoint.sh /entrypoint.sh
 RUN dos2unix /entrypoint.sh
