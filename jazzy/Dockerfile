@@ -27,6 +27,9 @@ ARG TARGETARCH
 # This environment variable is only declared at build time.
 ARG QEMU_CPU
 ARG INSTALL_PACKAGE=desktop
+# When enabled, patch WebotsLauncher so worlds launched through
+# webots_ros2_driver get a default wbproj layout when they don't ship one.
+ARG ENABLE_WEBOTS_LAUNCHER_DEFAULT_WBPROJ_PATCH=true
 
 LABEL maintainer="Sylvain ARGENTIERI<sylvain.argentieri@sorbonne-universite.fr>"
 
@@ -161,7 +164,11 @@ COPY --chmod=644 ./config/colcon-defaults.yaml ${ROS_DESKTOP_VNC_DIR}/colcon-def
 COPY --chmod=755 ./config/xstartup.sh ${ROS_DESKTOP_VNC_DIR}/xstartup.sh
 COPY --chmod=755 ./config/vnc_run.sh ${ROS_DESKTOP_VNC_DIR}/vnc_run.sh
 COPY --chmod=644 ./config/webots-default.conf ${ROS_DESKTOP_VNC_DIR}/webots-default.conf
+COPY --chmod=644 ./config/webots-empty.wbproj ${ROS_DESKTOP_VNC_DIR}/webots-empty.wbproj
 COPY --chmod=644 ./config/supervisord.conf.template ${ROS_DESKTOP_VNC_DIR}/supervisord.conf.template
+# Versioned unified diff for the upstream ROS 2 Webots launcher. Keeping the
+# patch as a diff makes the override reviewable against the original file.
+COPY --chmod=644 ./patches/webots_launcher.patch ${ROS_DESKTOP_VNC_DIR}/webots_launcher.patch
 # GLib schema overrides for MATE panel and desktop defaults.
 COPY --chmod=644 ./config/90_ros2-desktop-vnc.gschema.override /usr/share/glib-2.0/schemas/90_ros2-desktop-vnc.gschema.override
 # Custom MATE panel layout with the launchers used by this image.
@@ -174,6 +181,24 @@ COPY --chmod=755 ./desktop/ /usr/local/share/ros-desktop-vnc/desktop/
 # Compile the updated GLib schemas and fix permissions on shared asset directories.
 RUN glib-compile-schemas /usr/share/glib-2.0/schemas && \
     chmod 755 ${ROS_DESKTOP_VNC_DIR} /usr/local/share/ros-desktop-vnc /usr/local/share/ros-desktop-vnc/background /usr/local/share/ros-desktop-vnc/desktop
+
+# Override the default Webots project layout so worlds without a project file
+# start with only the 3D simulation view visible.
+RUN if [[ "$TARGETARCH" == "amd64" && -d /usr/local/webots/resources/projects/worlds ]]; then \
+    cp ${ROS_DESKTOP_VNC_DIR}/webots-empty.wbproj /usr/local/webots/resources/projects/worlds/.empty.wbproj; \
+    fi
+
+# Patch the ROS 2 Webots launcher only when explicitly enabled. This keeps the behavior opt-out at
+# build time while making the override visible in the image definition. We also keep a .orig copy of
+# the upstream launcher in the image so it stays easy to diff or restore inside a running container
+# if needed. 
+# The patch adds a default .wbproj layout to launched worlds that don't ship one, so they
+# start with the 3D simulation view only instead of the default Webots layout with multiple views.
+RUN if [[ "$TARGETARCH" == "amd64" && "${ENABLE_WEBOTS_LAUNCHER_DEFAULT_WBPROJ_PATCH}" == "true" && -f /opt/ros/jazzy/lib/python3.12/site-packages/webots_ros2_driver/webots_launcher.py ]]; then \
+    cp /opt/ros/jazzy/lib/python3.12/site-packages/webots_ros2_driver/webots_launcher.py /opt/ros/jazzy/lib/python3.12/site-packages/webots_ros2_driver/webots_launcher.py.orig && \
+    cd /opt/ros/jazzy/lib/python3.12/site-packages/webots_ros2_driver && \
+    patch -p1 < ${ROS_DESKTOP_VNC_DIR}/webots_launcher.patch; \
+    fi
 
 # Seed root and future user homes with ROS workspace defaults and desktop shortcuts.
 RUN install -d /etc/skel/.colcon /etc/skel/Desktop /etc/skel/ros2_ws/src \
