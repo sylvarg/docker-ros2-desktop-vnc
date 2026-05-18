@@ -31,7 +31,24 @@ USER root
 # hooks would point back to `${ROSCONFR_WS}/build`, which we want to discard
 # from the final image. We therefore hide the inherited colcon defaults for the
 # duration of the image build so `/opt/rosconfr/install` becomes self-contained.
-RUN install -d "${ROSCONFR_WS}/src" &&     git clone --depth 1 --branch "${ROSCONFR_REF}" "${ROSCONFR_REPOSITORY}" "${ROSCONFR_WS}/src/rosconfr" &&     if [[ -f /root/.colcon/defaults.yaml ]]; then mv /root/.colcon/defaults.yaml /tmp/rosconfr-colcon-defaults.yaml; fi &&     source "/opt/ros/${ROS_DISTRO}/setup.bash" &&     rosdep update &&     rosdep install --from-paths "${ROSCONFR_WS}/src" --ignore-src --rosdistro "${ROS_DISTRO}" -r -y &&     colcon build       --base-paths "${ROSCONFR_WS}/src"       --build-base "${ROSCONFR_WS}/build"       --install-base "${ROSCONFR_WS}/install"       --merge-install &&     if [[ -f /tmp/rosconfr-colcon-defaults.yaml ]]; then mv /tmp/rosconfr-colcon-defaults.yaml /root/.colcon/defaults.yaml; fi &&     rm -rf "${ROSCONFR_WS}/build" "${ROSCONFR_WS}/log" &&     chmod -R a+rX "${ROSCONFR_WS}"
+RUN install -d "${ROSCONFR_WS}/src" && \
+    git clone --depth 1 --branch "${ROSCONFR_REF}" "${ROSCONFR_REPOSITORY}" "${ROSCONFR_WS}/src/rosconfr" && \
+    if [[ -f /root/.colcon/defaults.yaml ]]; then \
+    mv /root/.colcon/defaults.yaml /tmp/rosconfr-colcon-defaults.yaml; \
+    fi && \
+    source "/opt/ros/${ROS_DISTRO}/setup.bash" && \
+    rosdep update && \
+    rosdep install --from-paths "${ROSCONFR_WS}/src" --ignore-src --rosdistro "${ROS_DISTRO}" -r -y && \
+    colcon build \
+    --base-paths "${ROSCONFR_WS}/src" \
+    --build-base "${ROSCONFR_WS}/build" \
+    --install-base "${ROSCONFR_WS}/install" \
+    --merge-install && \
+    if [[ -f /tmp/rosconfr-colcon-defaults.yaml ]]; then \
+    mv /tmp/rosconfr-colcon-defaults.yaml /root/.colcon/defaults.yaml; \
+    fi && \
+    rm -rf "${ROSCONFR_WS}/build" "${ROSCONFR_WS}/log" && \
+    chmod -R a+rX "${ROSCONFR_WS}"
 
 # Every interactive shell in jazzy-webots already sources
 # ${ROS_DESKTOP_VNC_DIR}/bashrc.sh. Appending the rosconfr overlay there makes
