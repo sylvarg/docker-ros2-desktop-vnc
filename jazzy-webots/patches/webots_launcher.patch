@@ -1,0 +1,158 @@
+# Repository-specific patch for webots_ros2_driver/webots_launcher.py
+#
+# This patch extends the upstream launcher so the `external` Webots workflow
+# used by this image remains functional with real project assets. In particular
+# it:
+# - launches the staged world from a `worlds/` subdirectory to preserve
+#   relative paths used by Webots packages
+# - injects a default `.wbproj` layout when a world does not ship one
+# - recursively stages local EXTERNPROTO dependencies and referenced assets
+# - stages package controllers alongside the copied world when needed
+#
+# The goal is to make host-side Webots launches behave much closer to bundled
+# in-container launches
+
+--- a/webots_launcher.py
++++ b/webots_launcher.py
+@@ -122,7 +122,9 @@
+                     minimize,
+                     '--batch',
+                     ['--mode=', mode],
+-                    os.path.basename(self.__world_copy.name),
++                    os.path.join(
++                        'worlds', os.path.basename(self.__world_copy.name)
++                    ),
+                 ],
+                 name='webots_tcp_client',
+                 **kwargs
+@@ -158,14 +160,74 @@
+ 
+         shutil.copy2(world_path, self.__world_copy.name)
+ 
+-        # look for a wbproj file and copy if available
++        # Webots stores the visibility/layout state of the scene tree, console
++        # and text editor in the hidden *.wbproj file associated with a world.
++        # The global Webots preferences file does not expose simple booleans for
++        # these panes, so when a world has no wbproj we seed the temporary copy
++        # with a repo-provided default layout. Existing project-specific wbproj
++        # files always win, so packages can still opt into their own UI state.
+         wbproj_path = Path(world_path).with_name('.' + Path(world_path).stem + '.wbproj')
++        default_wbproj_path = Path(
++            os.environ.get('ROS_DESKTOP_VNC_DIR', '/etc/ros-desktop-vnc')
++        ) / 'webots-empty.wbproj'
++        wbproj_copy_path = Path(self.__world_copy.name).with_name(
++            '.' + Path(self.__world_copy.name).stem + '.wbproj'
++        )
++        wbproj_source_path = None
+ 
+         if wbproj_path.exists():
+-            wbproj_copy_path = Path(self.__world_copy.name).with_name('.' + Path(self.__world_copy.name).stem +
+-                                                                      '.wbproj')
+-            shutil.copy2(wbproj_path, wbproj_copy_path)
++            wbproj_source_path = wbproj_path
++        elif default_wbproj_path.exists():
++            wbproj_source_path = default_wbproj_path
++
++        if wbproj_source_path:
++            shutil.copy2(wbproj_source_path, wbproj_copy_path)
++
++        def is_local_relative_webots_path(path):
++            return not os.path.isabs(path) and not path.startswith('webots://') \
++                and not path.startswith('http://') and not path.startswith('https://')
++
++        def copy_path_into_shared_folder(source_path, destination_path):
++            if destination_path.exists():
++                return
++            destination_path.parent.mkdir(parents=True, exist_ok=True)
++            if source_path.is_dir():
++                shutil.copytree(source_path, destination_path)
++            else:
++                shutil.copy2(source_path, destination_path)
++
++        def stage_local_dependencies(source_file, staged_file, visited_files):
++            source_file = Path(source_file).resolve()
++            staged_file = Path(staged_file)
++
++            if source_file in visited_files or not source_file.exists():
++                return
++
++            visited_files.add(source_file)
++            content = source_file.read_text()
++
++            for match in re.finditer(r'^EXTERNPROTO\s+"([^"]+)"', content, re.MULTILINE):
++                dependency_path = match.group(1)
++                if not is_local_relative_webots_path(dependency_path):
++                    continue
++                dependency_source = (source_file.parent / dependency_path).resolve()
++                dependency_target = (staged_file.parent / dependency_path).resolve()
++                if dependency_source.exists():
++                    copy_path_into_shared_folder(dependency_source, dependency_target)
++                    if dependency_source.suffix.lower() == '.proto':
++                        stage_local_dependencies(dependency_source, dependency_target, visited_files)
+ 
++            for match in re.finditer(r'"((?:[^"]*)\.(?:jpe?g|png|hdr|obj|stl|dae|wav|mp3|proto))"', content):
++                dependency_path = match.group(1)
++                if not is_local_relative_webots_path(dependency_path):
++                    continue
++                dependency_source = (source_file.parent / dependency_path).resolve()
++                dependency_target = (staged_file.parent / dependency_path).resolve()
++                if dependency_source.exists():
++                    copy_path_into_shared_folder(dependency_source, dependency_target)
++                    if dependency_source.suffix.lower() == '.proto':
++                        stage_local_dependencies(dependency_source, dependency_target, visited_files)
++
+         # copy sumo network file if it exists
+         sumonet_path = Path(world_path).with_name(Path(world_path).stem + '_net')
+         if sumonet_path.exists():
+@@ -196,9 +258,10 @@
+ 
+             new_url_path = os.path.split(world_path)[0] + '/' + url_path
+             if self.__has_shared_folder:
+-                # Copy asset to shared folder
+-                shutil.copy(new_url_path, os.path.join(container_shared_folder(), os.path.basename(new_url_path)))
+-                new_url_path = './' + os.path.basename(new_url_path)
++                # The shared-folder backend stages local dependencies with
++                # their relative layout preserved, so URLs should stay
++                # unchanged inside the copied world and PROTO files.
++                continue
+             if self.__is_wsl:
+                 command = ['wslpath', '-w', new_url_path]
+                 new_url_path = subprocess.check_output(command).strip().decode('utf-8').replace('\\', '/')
+@@ -222,11 +285,32 @@
+ 
+         # Copy world file to shared folder
+         if self.__has_shared_folder:
+-            shared_world_file = os.path.join(container_shared_folder(), os.path.basename(self.__world_copy.name))
+-            shutil.copy(self.__world_copy.name, shared_world_file)
+-            if wbproj_path.exists():
+-                shared_wbproj_copy_path = Path(shared_world_file).with_name('.' + Path(shared_world_file).stem + '.wbproj')
+-                shutil.copy(wbproj_path, shared_wbproj_copy_path)
++            shared_world_file = Path(container_shared_folder()) / 'worlds' / os.path.basename(self.__world_copy.name)
++            shared_world_file.parent.mkdir(parents=True, exist_ok=True)
++            shutil.copy2(self.__world_copy.name, shared_world_file)
++            stage_local_dependencies(world_path, shared_world_file, set())
++            if sumonet_path.exists():
++                shared_sumonet_copy_path = shared_world_file.with_name(Path(shared_world_file).stem + '_net')
++                if shared_sumonet_copy_path.exists():
++                    shutil.rmtree(shared_sumonet_copy_path)
++                shutil.copytree(sumonet_path, shared_sumonet_copy_path)
++            if forests_path.exists():
++                shared_forests_copy = shared_world_file.with_name('forest')
++                if shared_forests_copy.exists():
++                    shutil.rmtree(shared_forests_copy)
++                shutil.copytree(forests_path, shared_forests_copy)
++            package_root = Path(world_path).resolve().parent.parent
++            controllers_path = package_root / 'controllers'
++            if controllers_path.exists():
++                copy_path_into_shared_folder(
++                    controllers_path,
++                    Path(container_shared_folder()) / 'controllers'
++                )
++            if wbproj_source_path:
++                shared_wbproj_copy_path = Path(shared_world_file).with_name(
++                    '.' + Path(shared_world_file).stem + '.wbproj'
++                )
++                shutil.copy2(wbproj_source_path, shared_wbproj_copy_path)
+ 
+         # Execute process
+         return super().execute(context)

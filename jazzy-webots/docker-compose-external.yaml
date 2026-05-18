@@ -1,0 +1,25 @@
+services:
+  ros-desktop-vnc-jazzy:
+    build:
+      args:
+        # Build a Linux container that includes ROS 2 + webots_ros2 but expects
+        # the Webots GUI/simulator to run natively on macOS.
+        WEBOTS_BACKEND: external
+    image: ros2-desktop-vnc:jazzy-webots-external-arm64
+    # Apple Silicon Macs can run the Linux ROS stack natively as arm64 while
+    # Webots itself stays outside Docker as a native macOS application.
+    platform: linux/arm64
+    container_name: ros2_desktop_vnc_jazzy_macos_external
+    environment:
+      TZ: "${TZ:-Europe/Paris}"
+      VNC_NO_PASSWORD: "true"
+      WEBOTS_BACKEND: "external"
+      # The upstream macOS workflow expects WEBOTS_SHARED_FOLDER in the form:
+      #   <host shared path>:<guest shared path>
+      # Docker Desktop mounts the host directory at the container path below so
+      # webots_ros2 can exchange worlds/resources with the host Webots process.
+      WEBOTS_SHARED_FOLDER: "${MAC_WEBOTS_SHARED_HOST_DIR:-/tmp/ros2-desktop-vnc-webots-shared}:${CONTAINER_WEBOTS_SHARED_DIR:-/home/turtle/webots_shared}"
+    volumes:
+      - type: bind
+        source: ${MAC_WEBOTS_SHARED_HOST_DIR:-/tmp/ros2-desktop-vnc-webots-shared}
+        target: ${CONTAINER_WEBOTS_SHARED_DIR:-/home/turtle/webots_shared}

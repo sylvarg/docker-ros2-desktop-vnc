@@ -2,11 +2,17 @@
 
 set -Eeuo pipefail
 
+# Runtime knobs exposed to users through `docker run` / `docker compose`.
+# Keep these defaults aligned with the image documentation so the container can
+# still start with no extra environment variables.
 CONTAINER_USER="${USER:-root}"
 PASSWORD="${PASSWORD:-${PASSWD:-turtlebot}}"
 VNC_NO_PASSWORD="${VNC_NO_PASSWORD:-true}"
 TZ="${TZ:-Europe/Paris}"
 CONFIG_DIR="${ROS_DESKTOP_VNC_DIR:-/etc/ros-desktop-vnc}"
+WEBOTS_BACKEND="${WEBOTS_BACKEND:-bundled}"
+
+# These values are resolved later once the target user is known.
 HOME_DIR="/root"
 USER_UID="0"
 
@@ -14,6 +20,7 @@ log() {
     printf '[entrypoint] %s\n' "$*"
 }
 
+# Accept the common boolean spellings used in Docker environment variables.
 is_true() {
     case "${1,,}" in
         1|true|yes|on)
@@ -25,6 +32,8 @@ is_true() {
     esac
 }
 
+# Copy a seed file from the image only when the target file does not already
+# exist. This preserves user-mounted data and user-edited dotfiles across runs.
 copy_if_missing() {
     local source_path="$1"
     local target_path="$2"
@@ -37,6 +46,9 @@ copy_if_missing() {
     fi
 }
 
+# Some directories may already exist because they come from Docker volumes or
+# were created by root during a previous startup step. Normalize ownership so
+# desktop tools, ROS, and Webots all run as the target user.
 ensure_owned() {
     local owner="$1"
     shift
@@ -49,6 +61,9 @@ ensure_owned() {
     done
 }
 
+# Webots stores its preferences in INI-like files. Python is used here instead
+# of shell text mangling so repeated container starts remain idempotent and do
+# not duplicate keys or corrupt sections.
 set_ini_value() {
     local file_path="$1"
     local section="$2"
@@ -109,6 +124,9 @@ configure_timezone() {
     fi
 }
 
+# Resolve the runtime Unix user. The image supports both root and a regular
+# desktop user because development workflows sometimes mount host workspaces and
+# expect shell sessions, GUI tools, and generated files to use a non-root UID.
 ensure_user() {
     if [[ "$CONTAINER_USER" == "root" ]]; then
         HOME_DIR="/root"
@@ -122,23 +140,39 @@ ensure_user() {
         log "using existing user: $CONTAINER_USER"
     else
         log "creating user: $CONTAINER_USER"
-        useradd --create-home --shell /bin/bash --user-group --groups adm,sudo "$CONTAINER_USER"
+        # When Docker bind-mounts a path below /home/<user>, it may create the
+        # parent home directory before the entrypoint runs. Reuse that home
+        # directory instead of asking `useradd` to create it again, which would
+        # emit a warning on every fresh container start.
+        if [[ -d "/home/$CONTAINER_USER" ]]; then
+            useradd --home-dir "/home/$CONTAINER_USER" --no-create-home --shell /bin/bash --user-group --groups adm,sudo "$CONTAINER_USER"
+        else
+            useradd --create-home --home-dir "/home/$CONTAINER_USER" --shell /bin/bash --user-group --groups adm,sudo "$CONTAINER_USER"
+        fi
         HOME_DIR="$(getent passwd "$CONTAINER_USER" | cut -d: -f6)"
         USER_UID="$(id -u "$CONTAINER_USER")"
     fi
 
+    # Give the interactive desktop user passwordless sudo. This image is used
+    # as a development environment, not as a hardened multi-user system.
     mkdir -p /etc/sudoers.d
     printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$CONTAINER_USER" > "/etc/sudoers.d/90-${CONTAINER_USER}"
     chmod 0440 "/etc/sudoers.d/90-${CONTAINER_USER}"
 
     echo "$CONTAINER_USER:$PASSWORD" | chpasswd
 
+    # Seed the user home with the image defaults only when those files are not
+    # already present. This keeps user state persistent when a home directory is
+    # mounted from the host or reused between container starts.
     copy_if_missing "/etc/skel/.bashrc" "$HOME_DIR/.bashrc" "$CONTAINER_USER"
     copy_if_missing "/etc/skel/.profile" "$HOME_DIR/.profile" "$CONTAINER_USER"
     copy_if_missing "/root/.config" "$HOME_DIR/.config" "$CONTAINER_USER"
     copy_if_missing "/root/.gtkrc-2.0" "$HOME_DIR/.gtkrc-2.0" "$CONTAINER_USER"
     copy_if_missing "/root/.asoundrc" "$HOME_DIR/.asoundrc" "$CONTAINER_USER"
 
+    # Pre-create the directories expected by Mesa, colcon, the desktop, and the
+    # default ROS workspace layout so first launches do not depend on side
+    # effects from GUI applications.
     mkdir -p "$HOME_DIR/.cache/mesa_shader_cache" "$HOME_DIR/.colcon" "$HOME_DIR/Desktop" "$HOME_DIR/ros2_ws/src"
     chown "$CONTAINER_USER:$CONTAINER_USER" \
         "$HOME_DIR" \
@@ -158,22 +192,30 @@ ensure_user() {
     for desktop_file in /usr/local/share/ros-desktop-vnc/desktop/*.desktop; do
         copy_if_missing "$desktop_file" "$HOME_DIR/Desktop/$(basename "$desktop_file")" "$CONTAINER_USER"
     done
+
+    # Audio device permissions vary depending on the host runtime. Best effort
+    # is enough here because sound support is optional for most workflows.
     if [[ -d /dev/snd ]]; then
         chgrp -R adm /dev/snd || true
     fi
 }
 
+# Graphical sessions expect XDG_RUNTIME_DIR to exist and be writable by the
+# logged-in user. Containers often start without it, so we create it ourselves.
 configure_runtime_dir() {
     local runtime_dir="/run/user/$USER_UID"
-
     install -d -m 700 -o "$CONTAINER_USER" -g "$CONTAINER_USER" "$runtime_dir"
 }
 
+# Prepare the TigerVNC runtime files in the user's home directory. The config
+# files are copied from the image so they can still be customized by users in a
+# persistent home volume.
 configure_vnc() {
     local vnc_password="${VNC_PASSWORD:-$PASSWORD}"
     local vnc_dir="$HOME_DIR/.vnc"
     local xstartup_path="$vnc_dir/xstartup"
     local vncrun_path="$vnc_dir/vnc_run.sh"
+
     mkdir -p "$vnc_dir"
     if is_true "$VNC_NO_PASSWORD"; then
         rm -f "$vnc_dir/passwd"
@@ -189,6 +231,9 @@ configure_vnc() {
     ensure_owned "$CONTAINER_USER" "$vnc_dir"
 }
 
+# `rosdep init` is performed at build time as root. At runtime we only need to
+# copy the resulting cache into the interactive user's home so `rosdep update`
+# and package resolution work out of the box.
 configure_rosdep() {
     local ros_dir="$HOME_DIR/.ros"
 
@@ -199,14 +244,49 @@ configure_rosdep() {
     ensure_owned "$CONTAINER_USER" "$ros_dir"
 }
 
+# When Webots runs on the host, `webots_ros2` expects a shared host/container
+# folder described as "<host path>:<container path>". The entrypoint only owns
+# the container side of that contract, so it ensures the target directory exists
+# with the correct permissions before the first launch file runs.
+configure_webots_shared_folder() {
+    local shared_spec="${WEBOTS_SHARED_FOLDER:-}"
+    local container_shared_dir
+
+    # Absence of a shared folder is valid for the bundled backend and should
+    # not abort the entrypoint under `set -e`.
+    [[ -n "$shared_spec" ]] || return 0
+
+    container_shared_dir="${shared_spec##*:}"
+    if [[ "$container_shared_dir" == "$shared_spec" ]]; then
+        log "WEBOTS_SHARED_FOLDER has no container path suffix: $shared_spec"
+        return
+    fi
+
+    mkdir -p "$container_shared_dir"
+    ensure_owned "$CONTAINER_USER" "$container_shared_dir"
+
+    if [[ "$WEBOTS_BACKEND" == "external" ]]; then
+        log "using external Webots backend with shared folder: $shared_spec"
+    fi
+}
+
+# In bundled mode the container owns the local Linux Webots installation, so we
+# can pre-seed its user preferences. In external mode the simulator runs on the
+# host and these files would be meaningless inside the container.
 configure_webots_preferences() {
     local version_file="/usr/local/webots/resources/version.txt"
     local preferences_dir preferences_file webots_version
 
-    [[ -x /usr/local/bin/webots && -f "$version_file" ]] || return
+    if [[ "$WEBOTS_BACKEND" != "bundled" ]]; then
+        log "skipping local Webots preference setup for backend: $WEBOTS_BACKEND"
+        return
+    fi
+
+    # Missing local Webots files simply means there is nothing to configure.
+    [[ -x /usr/local/bin/webots && -f "$version_file" ]] || return 0
 
     webots_version="$(<"$version_file")"
-    [[ -n "$webots_version" ]] || return
+    [[ -n "$webots_version" ]] || return 0
 
     preferences_dir="$HOME_DIR/.config/Cyberbotics"
     preferences_file="$preferences_dir/Webots-${webots_version}.conf"
@@ -224,6 +304,8 @@ configure_webots_preferences() {
     ensure_owned "$CONTAINER_USER" "$preferences_dir" "$preferences_file"
 }
 
+# A small template is easier to maintain than generating the whole supervisor
+# file in shell. We only substitute the runtime-dependent values here.
 configure_supervisor() {
     local vncrun_path="$HOME_DIR/.vnc/vnc_run.sh"
     local template_path="$CONFIG_DIR/supervisord.conf.template"
@@ -234,21 +316,29 @@ configure_supervisor() {
         "$template_path" > /etc/supervisor/conf.d/ros-desktop-vnc.conf
 }
 
+# Startup order matters: the user and home directory must exist before VNC,
+# rosdep, or Webots setup can touch per-user files.
 main() {
     configure_timezone
     ensure_user
     configure_runtime_dir
     configure_vnc
     configure_rosdep
+    configure_webots_shared_folder
     configure_webots_preferences
     configure_supervisor
 
+    # Export the final runtime environment inherited by shells, launch files,
+    # and the supervised desktop processes.
     export HOME="$HOME_DIR"
     export USER="$CONTAINER_USER"
     export VNC_NO_PASSWORD
     export TZ
+    export WEBOTS_BACKEND
     unset PASSWORD PASSWD VNC_PASSWORD
 
+    # `tini` stays PID 1 to reap zombies and forward signals cleanly, while
+    # `supervisord` keeps the desktop stack alive.
     exec /usr/bin/tini -- supervisord -n -c /etc/supervisor/supervisord.conf
 }
 

@@ -27,6 +27,11 @@ ARG TARGETARCH
 # This environment variable is only declared at build time.
 ARG QEMU_CPU
 ARG INSTALL_PACKAGE=desktop
+# Select how Webots is provided to the ROS container:
+# - bundled: install the native Linux Webots package inside the image
+# - external: install only the ROS/Webots bridge and connect to a host Webots
+#   instance through the upstream shared-folder/TCP workflow
+ARG WEBOTS_BACKEND=bundled
 # When enabled, patch WebotsLauncher so worlds launched through
 # webots_ros2_driver get a default wbproj layout when they don't ship one.
 ARG ENABLE_WEBOTS_LAUNCHER_DEFAULT_WBPROJ_PATCH=true
@@ -107,7 +112,11 @@ RUN wget -q https://gitlab.com/paulcarroty/vscodium-deb-rpm-repo/raw/master/pub.
     apt-get install -y codium && \
     rm -rf /var/lib/apt/lists/*
 
-# Install ROS 2 Jazzy
+# Install ROS 2 Jazzy and the ROS/Webots bridge package.
+# `ros-${ROS_DISTRO}-webots-ros2` is useful in both modes:
+# - bundled: it launches the Linux Webots installed in the image
+# - external: it prepares worlds/controllers and connects them to a host Webots
+#   instance through the upstream remote workflow documented for macOS/Windows
 RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
     -o /usr/share/keyrings/ros-archive-keyring.gpg && \
     curl -sSL https://download.eclipse.org/zenoh/debian-repo/zenoh-public-key \
@@ -119,6 +128,7 @@ RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
     apt-get update -q && \
     apt-get install -y \
     ros-${ROS_DISTRO}-${INSTALL_PACKAGE} \
+    ros-${ROS_DISTRO}-webots-ros2 \
     python3-argcomplete \
     python3-colcon-common-extensions \
     python3-rosdep \
@@ -128,18 +138,22 @@ RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
     rosdep update && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Webots and related ros2 package... but only on amd64 since Cyberbotics does not provide arm64 packages for now
-RUN if [[ "$TARGETARCH" == "amd64" ]]; then \
+# Install native Linux Webots only for the bundled backend on amd64.
+# On arm64 we intentionally skip it because Cyberbotics does not ship a Linux
+# arm64 package. The external backend is the intended path there, especially on
+# Apple Silicon where native macOS Webots avoids slow amd64 emulation.
+RUN if [[ "${WEBOTS_BACKEND}" == "bundled" && "$TARGETARCH" == "amd64" ]]; then \
     wget -q https://cyberbotics.com/Cyberbotics.asc \
     -O /etc/apt/keyrings/Cyberbotics.asc && \
     echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/Cyberbotics.asc] https://cyberbotics.com/debian binary-amd64/" \
     > /etc/apt/sources.list.d/Cyberbotics.list && \
     apt-get update -q && \
-    apt-get install -y webots \
-    ros-jazzy-webots-ros2 && \
+    apt-get install -y webots && \
     rm -rf /var/lib/apt/lists/*; \
+    elif [[ "${WEBOTS_BACKEND}" == "bundled" ]]; then \
+    echo "Skipping bundled Linux Webots install on unsupported architecture: $TARGETARCH"; \
     else \
-    echo "Skipping Webots install on unsupported architecture: $TARGETARCH"; \
+    echo "Using external Webots backend; skipping native Linux Webots install"; \
     fi
 
 # # Install Gazebo
@@ -182,19 +196,19 @@ COPY --chmod=755 ./desktop/ /usr/local/share/ros-desktop-vnc/desktop/
 RUN glib-compile-schemas /usr/share/glib-2.0/schemas && \
     chmod 755 ${ROS_DESKTOP_VNC_DIR} /usr/local/share/ros-desktop-vnc /usr/local/share/ros-desktop-vnc/background /usr/local/share/ros-desktop-vnc/desktop
 
-# Override the default Webots project layout so worlds without a project file
-# start with only the 3D simulation view visible.
-RUN if [[ "$TARGETARCH" == "amd64" && -d /usr/local/webots/resources/projects/worlds ]]; then \
+# Override the default Webots project layout only when the Linux simulator is
+# bundled in the image. The external backend uses the same wbproj template via
+# the patched ROS launcher below, so host-launched simulations still benefit
+# from the simplified default layout.
+RUN if [[ "${WEBOTS_BACKEND}" == "bundled" && "$TARGETARCH" == "amd64" && -d /usr/local/webots/resources/projects/worlds ]]; then \
     cp ${ROS_DESKTOP_VNC_DIR}/webots-empty.wbproj /usr/local/webots/resources/projects/worlds/.empty.wbproj; \
     fi
 
-# Patch the ROS 2 Webots launcher only when explicitly enabled. This keeps the behavior opt-out at
-# build time while making the override visible in the image definition. We also keep a .orig copy of
-# the upstream launcher in the image so it stays easy to diff or restore inside a running container
-# if needed. 
-# The patch adds a default .wbproj layout to launched worlds that don't ship one, so they
-# start with the 3D simulation view only instead of the default Webots layout with multiple views.
-RUN if [[ "$TARGETARCH" == "amd64" && "${ENABLE_WEBOTS_LAUNCHER_DEFAULT_WBPROJ_PATCH}" == "true" && -f /opt/ros/jazzy/lib/python3.12/site-packages/webots_ros2_driver/webots_launcher.py ]]; then \
+# Patch the ROS 2 Webots launcher in both backends. The launcher belongs to the
+# ROS package, not to the simulator install itself, so this remains useful when
+# Webots runs on the host: the world copy staged by `webots_ros2_driver` still
+# gets the repo-provided default wbproj layout before being handed off to Webots.
+RUN if [[ "${ENABLE_WEBOTS_LAUNCHER_DEFAULT_WBPROJ_PATCH}" == "true" && -f /opt/ros/jazzy/lib/python3.12/site-packages/webots_ros2_driver/webots_launcher.py ]]; then \
     cp /opt/ros/jazzy/lib/python3.12/site-packages/webots_ros2_driver/webots_launcher.py /opt/ros/jazzy/lib/python3.12/site-packages/webots_ros2_driver/webots_launcher.py.orig && \
     cd /opt/ros/jazzy/lib/python3.12/site-packages/webots_ros2_driver && \
     patch -p1 < ${ROS_DESKTOP_VNC_DIR}/webots_launcher.patch; \

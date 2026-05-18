@@ -1,0 +1,29 @@
+name: ros2-jazzy
+services:
+  ros2-desktop-vnc-jazzy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # The default compose target keeps the historical behavior:
+        # Webots is installed inside the image and the container runs the full
+        # Linux simulator stack locally.
+        WEBOTS_BACKEND: bundled
+    image: ros2-desktop-vnc:jazzy-webots-embedded
+    # Cyberbotics only publishes Linux Webots packages for amd64, therefore the
+    # bundled image is intentionally pinned to amd64.
+    platform: linux/amd64
+    container_name: ros2_desktop_vnc_jazzy
+    environment:
+      TZ: "Europe/Paris"
+      VNC_NO_PASSWORD: "true"
+      WEBOTS_BACKEND: "bundled"
+    shm_size: "512m"
+    restart: unless-stopped
+    hostname: remotepc
+    extra_hosts:
+      - "remotepc:127.0.0.1"
+    ports:
+      - "6080:6080"
+    # volumes:
+    #   - /path/to/your/ws/src:/home/turtle/ros2_ws/src
