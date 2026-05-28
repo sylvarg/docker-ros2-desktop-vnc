@@ -5,12 +5,12 @@ This directory contains the `jazzy-webots` variant of the repository. Unlike the
 - `bundled`: Linux Webots is installed in the image and runs inside the container
 - `external`: the container ships ROS 2 and `webots_ros2`, while Webots runs natively on the host
 
-The main goal of this rewrite is to keep a usable image for Linux `amd64`, while also enabling a performant workflow on (Apple Silicon) macOS where Linux Webots `arm64` does not exist.
+The main goal of this rewrite is to keep a usable image for Linux `amd64`, while also enabling performant host-run Webots workflows on macOS and Windows when keeping the simulator outside the container is preferable.
 
 For now, the following tags are available, depending on the architecture and the way Webots is installed:
 
 - `sylvarg/docker-ros2-desktop-vnc:jazzy-webots-embedded`: AMD64 **only** version with Webots installed inside the image
-- `sylvarg/docker-ros2-desktop-vnc:jazzy-webots-external`: AMD64 **and** ARM64 version without Webots installed inside the image ; it has been tested on  macOS 26 for now and it allows to use a native Webots installation controlled and communicating with the container. AFAIK this is the only way to work with Webots on macOS (note that thanks to emulation, the `jazzy-webots-embedded` version actually works on macOS, but is very very (very) slow).
+- `sylvarg/docker-ros2-desktop-vnc:jazzy-webots-external`: AMD64 **and** ARM64 version without Webots installed inside the image ; it has been tested on macOS 26 for now and it allows a native host Webots installation to be controlled and to communicate with the container. The same container-side workflow is now documented for Windows with a dedicated PowerShell helper, although it still needs validation on a real Windows setup. AFAIK this remains the only practical way to work with Webots on macOS (note that thanks to emulation, the `jazzy-webots-embedded` version actually works on macOS, but is very very (very) slow).
 
 ## Quick Start
 
@@ -56,14 +56,21 @@ services:
 
 ### External (`amd64` and `arm64`) variant
 
-**So far only tested on macOS (`arm64` arch).** This might require some modifications to work on Linux.
+The `external` variant keeps ROS 2 and `webots_ros2` inside the Linux container while Webots itself runs natively on the host OS. The container-side setup is the same on macOS and Windows; only the host helper used to start `local_simulation_server.py` changes.
 
-The idea is now to install Webots natively on the host OS first, and to make the container communicate with it next.
+Host prerequisites:
+
+- Docker Desktop configured for Linux containers
+- a native Webots installation on the host OS
+- Python 3 on the host for macOS / Linux; on Windows the helper can offer to install the official Python Install Manager interactively when Python is missing
+- outbound HTTPS access so the Windows helper can download `local_simulation_server.py` automatically on first start, or a local copy of that file passed explicitly through `-WebotsServerScript`
+
+Docker will normally build the container for the host architecture automatically, which is the recommended path for this `external` mode.
 
 1. Build and start the container:
 
 ```sh
-docker compose -f docker-compose.macos-external.yaml up --build
+docker compose -f docker-compose-external.yaml up --build
 ```
 
 You can also use directly the following example compose file:
@@ -73,7 +80,7 @@ name: ros2-jazzy
 services:
   ros-desktop-vnc-jazzy:
     image: sylvarg/ros2-desktop-vnc:jazzy-webots-external
-    container_name: ros2_desktop_vnc_jazzy
+    container_name: ros2_desktop_vnc_jazzy_external
     shm_size: "512m"
     ports:
       - "6080:6080"
@@ -81,7 +88,7 @@ services:
       TZ: "Europe/Paris"
       VNC_NO_PASSWORD: "true"
       WEBOTS_BACKEND: "external"
-      WEBOTS_SHARED_FOLDER: "/tmp/ros2-desktop-vnc-webots-shared:/home/turtle/webots_shared"
+      WEBOTS_SHARED_FOLDER: "${WEBOTS_SHARED_HOST_DIR:-/tmp/ros2-desktop-vnc-webots-shared}:${CONTAINER_WEBOTS_SHARED_DIR:-/home/turtle/webots_shared}"
     hostname: remotepc
     extra_hosts:
       - "remotepc:127.0.0.1"
@@ -89,11 +96,13 @@ services:
     volumes:
       - /path/to/your/ws/src:/home/turtle/ros2_ws/src
       - type: bind
-        source: /tmp/ros2-desktop-vnc-webots-shared
-        target: /home/turtle/webots_shared
+        source: ${WEBOTS_SHARED_HOST_DIR:-/tmp/ros2-desktop-vnc-webots-shared}
+        target: ${CONTAINER_WEBOTS_SHARED_DIR:-/home/turtle/webots_shared}
 ```
 
 2. Start the Webots server on the host OS:
+
+macOS / Linux:
 
 ```sh
 git clone https://github.com/cyberbotics/webots-server /tmp/webots-server
@@ -101,15 +110,22 @@ WEBOTS_SERVER_SCRIPT=/tmp/webots-server/local_simulation_server.py \
 scripts/run_webots_host.sh
 ```
 
+Windows (PowerShell):
+
+```powershell
+$env:WEBOTS_SHARED_HOST_DIR = Join-Path $env:TEMP "ros2-desktop-vnc-webots-shared"
+.\scripts\run_webots_host.cmd
+```
+
+If Python is not already available on Windows, the script will ask whether it
+should install the official Python Install Manager first. When `winget` is
+available, the installation is launched directly from the terminal; otherwise
+the official download page is opened in the browser and the script waits for
+confirmation before continuing.
+
 3. Inside the container, run your usual `ros2 launch ...` command using `webots_ros2` for launching Webots (nothing different from a standard Webots launch file here)
 
 4. Webots should launch by itself the world specified in your launch file on the host OS
-
-<!-- This variant builds and runs:
-
-- the image `ros2-desktop-vnc:jazzy-webots-external-arm64`
-- a `linux/arm64` container
-- with native macOS Webots on the host side and ROS 2 inside the container -->
 
 ### Make the container communicate with an external host
 
@@ -130,23 +146,35 @@ By default, `WEBOTS_SHARED_FOLDER` is set to:
 Note that the variable `WEBOTS_SHARED_FOLDER` in the compose file:
 
 ```text
-WEBOTS_SHARED_FOLDER=/tmp/ros2-desktop-vnc-webots-shared:/home/turtle/webots_shared
+WEBOTS_SHARED_FOLDER=${WEBOTS_SHARED_HOST_DIR:-/tmp/ros2-desktop-vnc-webots-shared}:${CONTAINER_WEBOTS_SHARED_DIR:-/home/turtle/webots_shared}
 ```
 
-does not create the Docker mount by itself. The actual bind mount is defined later in [`docker-compose.macos-external.yaml`](./docker-compose.macos-external.yaml).
+does not create the Docker mount by itself. The actual bind mount is defined later in [`docker-compose-external.yaml`](./docker-compose-external.yaml).
 
-The script [`scripts/run_webots_host.sh`](./scripts/run_webots_host_macos.sh):
+The helper scripts [`scripts/run_webots_host.sh`](./scripts/run_webots_host.sh), [`scripts/run_webots_host.ps1`](./scripts/run_webots_host.ps1), and [`scripts/run_webots_host.cmd`](./scripts/run_webots_host.cmd):
 
 - checks `WEBOTS_HOME` (where Webots is installed on the host OS)
-- checks that `WEBOTS_SERVER_SCRIPT` exists (it is provided by Cyberbotics, directy downloaded from Github)
+- resolves `WEBOTS_SERVER_SCRIPT`, downloading `local_simulation_server.py` automatically on Windows when it is not already present locally
 - creates the shared directory if needed
 - and finally starts the native Webots host server
 
 ## Windows
 
-Placeholder section for a future workflow.
+The Windows workflow mirrors the macOS one:
 
-The intended direction is to document a dedicated Windows mode, probably around native Windows Webots and a Linux environment on the ROS 2 side. This variant is not implemented or validated in this repository yet.
+- native Windows Webots runs on the host
+- the Linux Docker container runs ROS 2 and `webots_ros2`
+- `local_simulation_server.py` bridges the two
+- the shared folder is still described with `WEBOTS_SHARED_FOLDER`, but the image now patches `webots_ros2_driver` so Windows drive-letter paths such as `C:\...` remain parseable
+- if Python is missing, `run_webots_host.cmd` can propose installation of the official Python Install Manager before launching the host server
+
+Recommended prerequisites on Windows:
+
+- Docker Desktop with Linux containers enabled
+- Webots installed in its default location (`C:\Program Files\Webots`) or `WEBOTS_HOME` set explicitly
+- no preinstalled Python is strictly required if you accept the helper's installation prompt, but outbound internet access is needed for that path
+- no special PowerShell execution-policy setup is needed when starting through `run_webots_host.cmd`
+- a host directory shared with Docker Desktop for the Webots exchange folder
 
 ## Linux
 
@@ -157,6 +185,6 @@ For now, the Linux workflow documented here is mainly the `bundled` `amd64` mode
 ## Known Limitations
 
 - the `embedded` image only exists on `amd64`
-- `external` mode is currently documented and validated mainly for macOS
-- Windows and Linux `external` documentation still needs to be completed
+- `external` mode is currently validated mainly on macOS; the Windows helper and compose flow still need end-to-end validation on a real Windows machine
+- Linux `external` documentation still needs to be completed
 - the `webots_launcher` patch follows repository-specific logic and will need review if the upstream package changes significantly

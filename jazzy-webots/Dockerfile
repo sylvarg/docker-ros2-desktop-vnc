@@ -204,6 +204,24 @@ RUN if [[ "${WEBOTS_BACKEND}" == "bundled" && "$TARGETARCH" == "amd64" && -d /us
     cp ${ROS_DESKTOP_VNC_DIR}/webots-empty.wbproj /usr/local/webots/resources/projects/worlds/.empty.wbproj; \
     fi
 
+# Patch the ROS 2 Webots utilities so shared-folder workflows can keep the same
+# WEBOTS_SHARED_FOLDER contract on Unix-like hosts and on Windows, where drive
+# letters introduce an extra ':' character in host paths. The same patch also
+# disables the upstream WSL path conversion branches when the code runs inside a
+# Docker container on Windows: Docker Desktop uses a Microsoft-flavored kernel
+# too, but the external shared-folder workflow should use Docker paths there,
+# not `wslpath`. The host-side TCP helper also carries its own shared-folder
+# parser, so it must be updated too.
+RUN if [[ -f /opt/ros/jazzy/lib/python3.12/site-packages/webots_ros2_driver/utils.py ]]; then \
+    cp /opt/ros/jazzy/lib/python3.12/site-packages/webots_ros2_driver/utils.py /opt/ros/jazzy/lib/python3.12/site-packages/webots_ros2_driver/utils.py.orig && \
+    python3 -c "from pathlib import Path; path = Path('/opt/ros/jazzy/lib/python3.12/site-packages/webots_ros2_driver/utils.py'); text = path.read_text(); old_split = \".split(':')\"; count = text.count(old_split); assert count == 2, f'Unexpected number of shared-folder split helpers in utils.py: {count}'; quote = chr(39); old_wsl = f\"    return {quote}microsoft-standard{quote} in uname().release\"; new_wsl = f\"    return (not is_docker()) and {quote}microsoft-standard{quote} in uname().release\"; assert old_wsl in text, 'WSL detection helper not found in utils.py'; text = text.replace(old_split, \".rsplit(':', 1)\"); text = text.replace(old_wsl, new_wsl); path.write_text(text);"; \
+    fi
+
+RUN if [[ -f /opt/ros/jazzy/share/webots_ros2_driver/scripts/webots_tcp_client.py ]]; then \
+    cp /opt/ros/jazzy/share/webots_ros2_driver/scripts/webots_tcp_client.py /opt/ros/jazzy/share/webots_ros2_driver/scripts/webots_tcp_client.py.orig && \
+    python3 -c "from pathlib import Path; path = Path('/opt/ros/jazzy/share/webots_ros2_driver/scripts/webots_tcp_client.py'); text = path.read_text(); old = \".split(':')\"; count = text.count(old); assert count == 1, f'Unexpected number of shared-folder split helpers in webots_tcp_client.py: {count}'; path.write_text(text.replace(old, \".rsplit(':', 1)\"));"; \
+    fi
+
 # Patch the ROS 2 Webots launcher in both backends. The launcher belongs to the
 # ROS package, not to the simulator install itself, so this remains useful when
 # Webots runs on the host: the world copy staged by `webots_ros2_driver` still
@@ -213,6 +231,11 @@ RUN if [[ "${ENABLE_WEBOTS_LAUNCHER_DEFAULT_WBPROJ_PATCH}" == "true" && -f /opt/
     cd /opt/ros/jazzy/lib/python3.12/site-packages/webots_ros2_driver && \
     patch -p1 < ${ROS_DESKTOP_VNC_DIR}/webots_launcher.patch; \
     fi
+
+# Remove stale bytecode so Python cannot keep loading the pre-patch versions of
+# utils.py or webots_launcher.py when the source changed in the same image build.
+RUN find /opt/ros/jazzy/lib/python3.12/site-packages/webots_ros2_driver \
+    \( -name '*.pyc' -o -name '*.pyo' \) -delete
 
 # Seed root and future user homes with ROS workspace defaults and desktop shortcuts.
 RUN install -d /etc/skel/.colcon /etc/skel/Desktop /etc/skel/ros2_ws/src \
@@ -225,6 +248,10 @@ RUN install -d /etc/skel/.colcon /etc/skel/Desktop /etc/skel/ros2_ws/src \
     printf '\nif [ -f %s/bashrc.sh ]; then\n  source %s/bashrc.sh\nfi\n' "${ROS_DESKTOP_VNC_DIR}" "${ROS_DESKTOP_VNC_DIR}" >> /root/.bashrc
 
 COPY --chmod=755 ./entrypoint.sh /entrypoint.sh
-RUN dos2unix /entrypoint.sh
+RUN dos2unix \
+    /entrypoint.sh \
+    ${ROS_DESKTOP_VNC_DIR}/bashrc.sh \
+    ${ROS_DESKTOP_VNC_DIR}/xstartup.sh \
+    ${ROS_DESKTOP_VNC_DIR}/vnc_run.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

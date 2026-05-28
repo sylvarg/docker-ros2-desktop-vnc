@@ -61,11 +61,11 @@
 +                and not path.startswith('http://') and not path.startswith('https://')
 +
 +        def copy_path_into_shared_folder(source_path, destination_path):
-+            if destination_path.exists():
-+                return
 +            destination_path.parent.mkdir(parents=True, exist_ok=True)
 +            if source_path.is_dir():
-+                shutil.copytree(source_path, destination_path)
++                # Merge directory trees so repeated external launches can refresh
++                # staged controllers even when the destination already exists.
++                shutil.copytree(source_path, destination_path, dirs_exist_ok=True)
 +            else:
 +                shutil.copy2(source_path, destination_path)
 +

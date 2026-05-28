@@ -2,12 +2,14 @@
 
 set -Eeuo pipefail
 
-# This helper starts the upstream Webots local simulation server on macOS so a
-# Linux ROS environment running in Docker can ask the native Webots.app process
-# to open worlds and spawn controllers.
+# This helper starts the upstream Webots local simulation server on a Unix-like
+# host so a Linux ROS environment running in Docker can ask the native Webots
+# process to open worlds and spawn controllers.
 #
 # Required inputs:
-# - WEBOTS_HOME: path to the native macOS Webots installation
+# - WEBOTS_HOME: path to the native host Webots installation
+# - WEBOTS_SERVER_SCRIPT: path to `local_simulation_server.py` from
+#   https://github.com/cyberbotics/webots-server
 #
 # Optional inputs:
 # - WEBOTS_SERVER_SCRIPT: path to `local_simulation_server.py` from
@@ -18,15 +20,20 @@ set -Eeuo pipefail
 # - WEBOTS_SERVER_REPOSITORY: git URL used when the helper auto-clones the
 #   upstream webots-server repository because the Python entrypoint is missing.
 
-# Default path for Webots.app on macOS, should be adapted accordingly
-WEBOTS_HOME="${WEBOTS_HOME:-/Applications/Webots.app}" 
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    default_webots_home="/Applications/Webots.app"
+else
+    default_webots_home="/usr/local/webots"
+fi
+
+WEBOTS_HOME="${WEBOTS_HOME:-$default_webots_home}"
 WEBOTS_SERVER_SCRIPT="${WEBOTS_SERVER_SCRIPT:-${1:-/tmp/webots-server/local_simulation_server.py}}"
 WEBOTS_SHARED_HOST_DIR="${WEBOTS_SHARED_HOST_DIR:-/tmp/ros2-desktop-vnc-webots-shared}"
 WEBOTS_SERVER_REPOSITORY="${WEBOTS_SERVER_REPOSITORY:-https://github.com/cyberbotics/webots-server}"
 
 if [[ ! -d "$WEBOTS_HOME" ]]; then
-    printf 'Webots.app not found at: %s\n' "$WEBOTS_HOME" >&2
-    printf 'Set WEBOTS_HOME to your native macOS Webots installation.\n' >&2
+    printf 'Webots installation not found at: %s\n' "$WEBOTS_HOME" >&2
+    printf 'Set WEBOTS_HOME to your native host Webots installation.\n' >&2
     exit 1
 fi
 

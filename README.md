@@ -5,13 +5,13 @@ This repository contains several ROS 2 desktop image variants exposed through no
 ## Variant Documentation
 
 - [`humble/`](./humble/README.md): historical version derived from the original upstream repository
-- [`jazzy-webots/`](./jazzy-webots/README.md): heavily reworked ROS 2 Jazzy image with embedded Webots support on `amd64` and externalized Webots support for macOS
+- [`jazzy-webots/`](./jazzy-webots/README.md): heavily reworked ROS 2 Jazzy image with embedded Webots support on `amd64` and a host-run `external` Webots workflow for macOS and Windows
 
 ## Repository Contents
 
 This repository has been inspired by [Tiryoh/docker-ros2-desktop-vnc](https://github.com/Tiryoh/docker-ros2-desktop-vnc) which has served as a basis for the `humble` version of the image. Since then, I have also reworked on image variants adapted to different ROS 2 versions (Jazzy for now), still with a noVNC integration to access the graphical desktop from a browser. **This version will be used during the Hackathon taking place in Paris for the [ROSCon France 2026](https://roscon.ros.org/fr/2026/)**.
 
-The Jazzy version specifically provides Webots-specific adjustments to allow the use of an "external" (i.e. outside the running Docker container) Webots installation, especially for macos since no Linux/arm64 version of Webots exists. I have not tested the same approach for Linux for now, but it might work directly ; Windows version of "externalization" has not been worked on so far (05/2026).
+The Jazzy version specifically provides Webots-specific adjustments to allow the use of an "external" (i.e. outside the running Docker container) Webots installation, especially for macOS since no Linux/arm64 version of Webots exists. The same architecture is now also documented for Windows with a dedicated PowerShell host helper, although it still needs validation on a real Windows setup. I have not tested the same approach for Linux for now, but it might work directly.
 
 ## Current Status
 
@@ -19,7 +19,7 @@ Recent work has mainly focused on the Jazzy rewrite, now with Webots (no gazebo)
 
 - migration to ROS 2 Jazzy on Ubuntu Noble
 - split between `bundled` and `external` Webots backends
-- explicit support for a macOS workflow with Webots running outside the container
+- explicit support for host-run Webots workflows, with documented helpers for macOS and Windows
 - a patched `webots_ros2` launcher to transfer worlds, `PROTO` files, assets, and controllers correctly
 
 ## Related Projects
