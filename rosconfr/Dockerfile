@@ -21,6 +21,11 @@ ENV ROSCONFR_WS=/opt/rosconfr
 
 USER root
 
+# Override the parent image desktop background with the rosconfr wallpaper.
+COPY --chmod=644 ./background/ /usr/local/share/ros-desktop-vnc/background/
+COPY --chmod=644 ./config/90_ros2-desktop-vnc.gschema.override /usr/share/glib-2.0/schemas/90_ros2-desktop-vnc.gschema.override
+RUN glib-compile-schemas /usr/share/glib-2.0/schemas
+
 # Clone rosconfr into an isolated workspace under /opt, resolve its system
 # dependencies from package.xml, then build a merged ROS overlay so it can be
 # sourced with a single local_setup.bash.
@@ -56,5 +61,3 @@ RUN install -d "${ROSCONFR_WS}/src" && \
 # without changing the base image.
 RUN printf '\n# Source the prebuilt rosconfr overlay when it is present in the image.\nif [ -f %s/install/local_setup.bash ]; then\n  source %s/install/local_setup.bash\nfi\n' \
     "${ROSCONFR_WS}" "${ROSCONFR_WS}" >> "${ROS_DESKTOP_VNC_DIR}/bashrc.sh"
-
-WORKDIR ${ROSCONFR_WS}

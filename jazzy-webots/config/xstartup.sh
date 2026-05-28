@@ -5,4 +5,7 @@ unset DBUS_SESSION_BUS_ADDRESS
 xset s off
 xset s noblank
 xset -dpms
+# Start the desktop session from the user's home so terminals inherit a sane
+# default working directory instead of the container's image-level WORKDIR.
+cd "$HOME"
 mate-session
