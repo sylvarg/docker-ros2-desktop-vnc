@@ -63,7 +63,6 @@ Host prerequisites:
 - Docker Desktop configured for Linux containers
 - a native Webots installation on the host OS
 - Python 3 on the host for macOS / Linux; on Windows the helper can offer to install the official Python Install Manager interactively when Python is missing
-- outbound HTTPS access so the Windows helper can download `local_simulation_server.py` automatically on first start, or a local copy of that file passed explicitly through `-WebotsServerScript`
 
 Docker will normally build the container for the host architecture automatically, which is the recommended path for this `external` mode.
 
@@ -105,19 +104,17 @@ services:
 macOS / Linux:
 
 ```sh
-git clone https://github.com/cyberbotics/webots-server /tmp/webots-server
-WEBOTS_SERVER_SCRIPT=/tmp/webots-server/local_simulation_server.py \
-scripts/run_webots_host.sh
+bash local_webots_server/run_webots_host.sh
 ```
 
 Windows (PowerShell):
 
 ```powershell
 $env:WEBOTS_SHARED_HOST_DIR = Join-Path $env:TEMP "ros2-desktop-vnc-webots-shared"
-.\scripts\run_webots_host.cmd
+.\local_webots_server\run_webots_host.cmd
 ```
 
-If Python is not already available on Windows, the script will ask whether it
+If Python is not already available on Windows, the launcher will ask whether it
 should install the official Python Install Manager first. When `winget` is
 available, the installation is launched directly from the terminal; otherwise
 the official download page is opened in the browser and the script waits for
@@ -151,12 +148,21 @@ WEBOTS_SHARED_FOLDER=${WEBOTS_SHARED_HOST_DIR:-/tmp/ros2-desktop-vnc-webots-shar
 
 does not create the Docker mount by itself. The actual bind mount is defined later in [`docker-compose-external.yaml`](./docker-compose-external.yaml).
 
-The helper scripts [`scripts/run_webots_host.sh`](./scripts/run_webots_host.sh), [`scripts/run_webots_host.ps1`](./scripts/run_webots_host.ps1), and [`scripts/run_webots_host.cmd`](./scripts/run_webots_host.cmd):
+The recommended host helpers are now grouped under [`local_webots_server/`](./local_webots_server/):
 
-- checks `WEBOTS_HOME` (where Webots is installed on the host OS)
-- resolves `WEBOTS_SERVER_SCRIPT`, downloading `local_simulation_server.py` automatically on Windows when it is not already present locally
-- creates the shared directory if needed
-- and finally starts the native Webots host server
+- [`local_webots_server/local_simulation_server.py`](./local_webots_server/local_simulation_server.py): repository-local, cross-platform Python server
+- [`local_webots_server/run_webots_host.sh`](./local_webots_server/run_webots_host.sh): Unix launcher for Linux and macOS
+- [`local_webots_server/run_webots_host.ps1`](./local_webots_server/run_webots_host.ps1): Windows launcher
+- [`local_webots_server/run_webots_host.cmd`](./local_webots_server/run_webots_host.cmd): convenience wrapper for PowerShell execution-policy bypass
+
+These launchers:
+
+- check `WEBOTS_HOME` or derive a default host installation path
+- prepare the shared directory used by Docker and Webots
+- locate the native Webots executable on the current host OS
+- and finally start the repository-local Webots host server
+
+The older helpers under [`scripts/`](./scripts/) are kept in the repository unchanged, but the `local_webots_server/` workflow is now the preferred path because it no longer depends on downloading and patching an upstream Python file at runtime.
 
 ## Windows
 
@@ -164,9 +170,9 @@ The Windows workflow mirrors the macOS one:
 
 - native Windows Webots runs on the host
 - the Linux Docker container runs ROS 2 and `webots_ros2`
-- `local_simulation_server.py` bridges the two
+- the repository-local `local_simulation_server.py` bridges the two
 - the shared folder is still described with `WEBOTS_SHARED_FOLDER`, but the image now patches `webots_ros2_driver` so Windows drive-letter paths such as `C:\...` remain parseable
-- if Python is missing, `run_webots_host.cmd` can propose installation of the official Python Install Manager before launching the host server
+- if Python is missing, `local_webots_server/run_webots_host.cmd` can propose installation of the official Python Install Manager before launching the host server
 
 Recommended prerequisites on Windows:
 
