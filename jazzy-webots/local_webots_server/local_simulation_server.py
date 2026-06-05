@@ -130,59 +130,81 @@ def run_server(port: int) -> None:
     tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     tcp_socket.bind((HOST, port))
     tcp_socket.listen()
+    connection = None
+    webots_process = None
 
-    while True:
-        print(f"Waiting for connection on port {port}...")
-        connection, address = tcp_socket.accept()
-        print(f"Connection from {address}")
+    try:
+        while True:
+            print(f"Waiting for connection on port {port}...")
+            connection, address = tcp_socket.accept()
+            print(f"Connection from {address}")
 
-        command = parse_command(connection.recv(BUFFER_SIZE))
-        if not command:
-            close_connection(connection, "FAIL: empty command received from client.")
-            continue
-
-        command, error = resolve_webots_executable(command)
-        if error:
-            close_connection(connection, error)
-            continue
-
-        error = validate_world_files(command)
-        if error:
-            close_connection(connection, error)
-            continue
-
-        try:
-            webots_process = subprocess.Popen(command)
-        except FileNotFoundError:
-            close_connection(
-                connection,
-                f"FAIL: '{command[0]}' could not be found on the host.",
-            )
-            continue
-
-        connection.sendall(b"ACK")
-        connection.settimeout(1)
-        connection_closed = False
-
-        while webots_process.poll() is None:
-            try:
-                data = connection.recv(BUFFER_SIZE)
-            except socket.timeout:
+            command = parse_command(connection.recv(BUFFER_SIZE))
+            if not command:
+                close_connection(connection, "FAIL: empty command received from client.")
                 continue
 
-            if not data:
-                print("Connection was closed by the client.")
+            command, error = resolve_webots_executable(command)
+            if error:
+                close_connection(connection, error)
+                continue
+
+            error = validate_world_files(command)
+            if error:
+                close_connection(connection, error)
+                continue
+
+            try:
+                webots_process = subprocess.Popen(command)
+            except FileNotFoundError:
+                close_connection(
+                    connection,
+                    f"FAIL: '{command[0]}' could not be found on the host.",
+                )
+                connection = None
+                continue
+
+            connection.sendall(b"ACK")
+            connection.settimeout(1)
+            connection_closed = False
+
+            while webots_process.poll() is None:
+                try:
+                    data = connection.recv(BUFFER_SIZE)
+                except socket.timeout:
+                    continue
+
+                if not data:
+                    print("Connection was closed by the client.")
+                    connection.close()
+                    connection = None
+                    webots_process.kill()
+                    webots_process = None
+                    connection_closed = True
+                    break
+
+            if connection_closed:
+                continue
+
+            print("Webots was executed successfully.")
+            connection.sendall(b"CLOSED")
+            connection.close()
+            connection = None
+            webots_process = None
+    except KeyboardInterrupt:
+        print("\nStopping Webots host server.")
+    finally:
+        if connection is not None:
+            try:
                 connection.close()
-                webots_process.kill()
-                connection_closed = True
-                break
+            except OSError:
+                pass
 
-        if connection_closed:
-            continue
+        if webots_process is not None and webots_process.poll() is None:
+            webots_process.kill()
+            webots_process.wait()
 
-        print("Webots was executed successfully.")
-        connection.sendall(b"CLOSED")
-        connection.close()
+        tcp_socket.close()
 
 
 def main(argv: list[str]) -> int:
