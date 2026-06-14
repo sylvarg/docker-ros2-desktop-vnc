@@ -1,28 +1,25 @@
 name: rosconfr
+
 services:
   ros-desktop-vnc:
     image: sylvarg/ros2-desktop-vnc:rosconfr-external
     environment:
-      TZ: "Europe/Paris"
+      TZ: "${TZ:?Set TZ in the selected env file}"
       VNC_NO_PASSWORD: "true"
       WEBOTS_BACKEND: "external"
-      WEBOTS_SHARED_FOLDER: "${WEBOTS_SHARED_HOST_DIR:-/tmp/ros2-desktop-vnc-webots-shared}:${CONTAINER_WEBOTS_SHARED_DIR:-/home/turtle/webots_shared}"
-    ## Shared memory size
-    shm_size: '512m'
-    ## Reboot policy
+      WEBOTS_SHARED_FOLDER: "${WEBOTS_SHARED_HOST_DIR:?Set WEBOTS_SHARED_HOST_DIR in the selected env file}:/home/turtle/webots_shared"
+    shm_size: "512m"
     restart: unless-stopped
-    ## Container name
     container_name: ros2_rosconfr
-    ## Container system hostname
     hostname: remotepc
-    ## To solve some issue with VNC
     extra_hosts:
       - "remotepc:127.0.0.1"
-    ## Port mapping
     ports:
       - "6080:6080"
     volumes:
-      - /path/to/your/src/folder:/home/turtle/ros2_ws/src
       - type: bind
-        source: ${WEBOTS_SHARED_HOST_DIR:-/tmp/ros2-desktop-vnc-webots-shared}
-        target: ${CONTAINER_WEBOTS_SHARED_DIR:-/home/turtle/webots_shared}
+        source: ${ROS2_WS_SRC_HOST_DIR:?Set ROS2_WS_SRC_HOST_DIR in the selected env file}
+        target: /home/turtle/ros2_ws/src
+      - type: bind
+        source: ${WEBOTS_SHARED_HOST_DIR:?Set WEBOTS_SHARED_HOST_DIR in the selected env file}
+        target: /home/turtle/webots_shared
