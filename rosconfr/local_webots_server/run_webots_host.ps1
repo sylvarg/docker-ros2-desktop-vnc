@@ -1,5 +1,4 @@
 param(
-    [Parameter(Mandatory = $true)]
     [string]$EnvFile,
     [string]$WebotsHome = $(if ($env:WEBOTS_HOME) { $env:WEBOTS_HOME } else { "C:\Program Files\Webots" }),
     [string]$WebotsSharedHostDir = $(if ($env:WEBOTS_SHARED_HOST_DIR) { $env:WEBOTS_SHARED_HOST_DIR } else { "" }),
@@ -13,6 +12,18 @@ $ServerScript = Join-Path $PSScriptRoot "local_simulation_server.py"
 $PythonInstallManagerUrl = "https://www.python.org/downloads/latest/pymanager/"
 $PythonInstallManagerWingetId = "9NQ7512CXL7T"
 $PythonInstallManagerWingetSource = "msstore"
+
+function Show-Usage {
+    Write-Host @"
+Usage:
+  .\run_webots_host.cmd --env-file <path> [server-port]
+  .\run_webots_host.ps1 -EnvFile <path> [server-port]
+
+Optional PowerShell named arguments:
+  -WebotsHome <path>
+  -WebotsSharedHostDir <path>
+"@
+}
 
 function Confirm-YesNo {
     param(
@@ -179,6 +190,62 @@ function Install-PythonInstallManager {
     return $true
 }
 
+function Resolve-LauncherArguments {
+    param(
+        [string]$EnvFile,
+        [bool]$EnvFileWasProvided,
+        [string[]]$Arguments
+    )
+
+    $forwardedArguments = New-Object System.Collections.Generic.List[string]
+
+    for ($index = 0; $index -lt $Arguments.Count; $index++) {
+        $argument = $Arguments[$index]
+
+        if ($argument -eq '--env-file') {
+            if ($EnvFileWasProvided) {
+                Write-Error "Env file was specified more than once. Use either -EnvFile or --env-file, not both."
+                exit 1
+            }
+
+            if ($index + 1 -ge $Arguments.Count) {
+                Show-Usage
+                Write-Error "--env-file requires a path."
+                exit 1
+            }
+
+            $EnvFile = $Arguments[$index + 1]
+            $EnvFileWasProvided = $true
+            $index++
+            continue
+        }
+
+        if ($argument.StartsWith('--env-file=')) {
+            if ($EnvFileWasProvided) {
+                Write-Error "Env file was specified more than once. Use either -EnvFile or --env-file, not both."
+                exit 1
+            }
+
+            $EnvFile = $argument.Substring('--env-file='.Length)
+            if ([string]::IsNullOrWhiteSpace($EnvFile)) {
+                Show-Usage
+                Write-Error "--env-file requires a path."
+                exit 1
+            }
+
+            $EnvFileWasProvided = $true
+            continue
+        }
+
+        $forwardedArguments.Add($argument)
+    }
+
+    return [pscustomobject]@{
+        EnvFile = $EnvFile
+        ServerArguments = $forwardedArguments.ToArray()
+    }
+}
+
 function Wait-ForPythonLauncherCandidate {
     param(
         [int]$TimeoutSeconds = 30
@@ -199,6 +266,20 @@ function Wait-ForPythonLauncherCandidate {
 
 if (-not (Test-Path -LiteralPath $ServerScript -PathType Leaf)) {
     Write-Error "Repository-local Webots server script not found: $ServerScript"
+    exit 1
+}
+
+$resolvedLauncherArguments = Resolve-LauncherArguments `
+    -EnvFile $EnvFile `
+    -EnvFileWasProvided $PSBoundParameters.ContainsKey('EnvFile') `
+    -Arguments $ServerArguments
+
+$EnvFile = $resolvedLauncherArguments.EnvFile
+$ServerArguments = $resolvedLauncherArguments.ServerArguments
+
+if ([string]::IsNullOrWhiteSpace($EnvFile)) {
+    Show-Usage
+    Write-Error "Env file path is required. Use -EnvFile <path> or --env-file <path>."
     exit 1
 }
 
