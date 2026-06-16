@@ -144,7 +144,7 @@ function Get-PythonLauncherCandidate {
             Executable = $pyCommand.Source
             Arguments = @("-3")
             Label = "py -3"
-            RequiresVerification = $false
+            RequiresVerification = $true
         })
     }
 
@@ -154,7 +154,7 @@ function Get-PythonLauncherCandidate {
             Executable = $pyAliasPath
             Arguments = @("-3")
             Label = "py -3"
-            RequiresVerification = $false
+            RequiresVerification = $true
         })
     }
 
@@ -165,7 +165,7 @@ function Get-PythonLauncherCandidate {
                 Executable = $pyPath
                 Arguments = @("-3")
                 Label = "py -3"
-                RequiresVerification = $false
+                RequiresVerification = $true
             })
         }
     }
@@ -181,10 +181,6 @@ function Get-PythonLauncherCandidate {
     }
 
     foreach ($candidate in $candidates) {
-        if (-not $candidate.RequiresVerification) {
-            return $candidate
-        }
-
         try {
             $testArgs = @($candidate.Arguments + @("-c", "import sys"))
             & $candidate.Executable @testArgs *> $null
