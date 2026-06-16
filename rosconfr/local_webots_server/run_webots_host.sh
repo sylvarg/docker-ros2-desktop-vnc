@@ -116,7 +116,5 @@ export WEBOTS_SHARED_HOST_DIR
 
 printf 'Launching repository-local Webots host server...\n'
 printf '  ENV_FILE=%s\n' "$ENV_FILE"
-printf '  WEBOTS_HOME=%s\n' "$WEBOTS_HOME"
-printf '  WEBOTS_SHARED_HOST_DIR=%s\n' "$WEBOTS_SHARED_HOST_DIR"
 
 exec python3 "$SERVER_SCRIPT" "$@"
