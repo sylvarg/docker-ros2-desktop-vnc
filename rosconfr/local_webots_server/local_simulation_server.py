@@ -208,7 +208,6 @@ def main(argv: list[str]) -> int:
     print("Starting repository-local Webots host server")
     print(f"  SERVER_SCRIPT={script_path}")
     print(f"  WEBOTS_HOME={os.environ.get('WEBOTS_HOME', '<unset>')}")
-    print(f"  WEBOTS_EXECUTABLE={os.environ.get('WEBOTS_EXECUTABLE', '<unset>')}")
     print(
         "  WEBOTS_SHARED_HOST_DIR="
         f"{os.environ.get('WEBOTS_SHARED_HOST_DIR', '<unset>')}"

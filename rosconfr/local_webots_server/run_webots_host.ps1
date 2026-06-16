@@ -1,6 +1,6 @@
 param(
     [string]$EnvFile,
-    [string]$WebotsHome = $(if ($env:WEBOTS_HOME) { $env:WEBOTS_HOME } else { "C:\Program Files\Webots" }),
+    [string]$WebotsHome,
     [string]$WebotsSharedHostDir = $(if ($env:WEBOTS_SHARED_HOST_DIR) { $env:WEBOTS_SHARED_HOST_DIR } else { "" }),
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$ServerArguments
@@ -91,6 +91,47 @@ function Get-WebotsExecutablePath {
     }
 
     return $null
+}
+
+function Get-DefaultWebotsHomeCandidates {
+    $candidates = New-Object System.Collections.Generic.List[string]
+    $candidates.Add("C:\Program Files\Webots")
+
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        $candidates.Add((Join-Path $env:LOCALAPPDATA "Programs\Webots"))
+    }
+
+    return $candidates.ToArray()
+}
+
+function Resolve-WebotsHome {
+    param(
+        [string]$ExplicitWebotsHome
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitWebotsHome)) {
+        if (-not (Test-Path -LiteralPath $ExplicitWebotsHome -PathType Container)) {
+            Write-Error "Webots installation not found at: $ExplicitWebotsHome`nSet WEBOTS_HOME to your native Windows Webots installation."
+            exit 1
+        }
+
+        return $ExplicitWebotsHome
+    }
+
+    foreach ($candidate in Get-DefaultWebotsHomeCandidates) {
+        if (Test-Path -LiteralPath $candidate -PathType Container) {
+            return $candidate
+        }
+    }
+
+    $searchedPaths = (Get-DefaultWebotsHomeCandidates) -join "`n  - "
+    Write-Error @"
+Webots installation was not found in the default Windows locations.
+The launcher checked:
+  - $searchedPaths
+Set WEBOTS_HOME in the env file or your shell environment, or re-run the script with -WebotsHome.
+"@
+    exit 1
 }
 
 function Get-PythonLauncherCandidate {
@@ -285,8 +326,12 @@ if ([string]::IsNullOrWhiteSpace($EnvFile)) {
 
 $envFileValues = Import-EnvFileValues -Path $EnvFile
 
-if (-not $PSBoundParameters.ContainsKey('WebotsHome') -and $envFileValues.ContainsKey('WEBOTS_HOME') -and -not [string]::IsNullOrWhiteSpace($envFileValues['WEBOTS_HOME'])) {
-    $WebotsHome = $envFileValues['WEBOTS_HOME']
+if (-not $PSBoundParameters.ContainsKey('WebotsHome')) {
+    if ($envFileValues.ContainsKey('WEBOTS_HOME') -and -not [string]::IsNullOrWhiteSpace($envFileValues['WEBOTS_HOME'])) {
+        $WebotsHome = $envFileValues['WEBOTS_HOME']
+    } elseif (-not [string]::IsNullOrWhiteSpace($env:WEBOTS_HOME)) {
+        $WebotsHome = $env:WEBOTS_HOME
+    }
 }
 
 if (-not $PSBoundParameters.ContainsKey('WebotsSharedHostDir') -and $envFileValues.ContainsKey('WEBOTS_SHARED_HOST_DIR') -and -not [string]::IsNullOrWhiteSpace($envFileValues['WEBOTS_SHARED_HOST_DIR'])) {
@@ -298,10 +343,7 @@ if ([string]::IsNullOrWhiteSpace($WebotsSharedHostDir)) {
     exit 1
 }
 
-if (-not (Test-Path -LiteralPath $WebotsHome -PathType Container)) {
-    Write-Error "Webots installation not found at: $WebotsHome`nSet WEBOTS_HOME in the env file or your shell environment."
-    exit 1
-}
+$WebotsHome = Resolve-WebotsHome -ExplicitWebotsHome $WebotsHome
 
 $webotsExecutable = Get-WebotsExecutablePath -WebotsHome $WebotsHome
 if (-not $webotsExecutable) {
@@ -312,7 +354,7 @@ The Windows helper looked for:
   - $([System.IO.Path]::Combine($WebotsHome, 'msys64\mingw64\bin\webots.exe'))
   - $([System.IO.Path]::Combine($WebotsHome, 'webotsw.exe'))
   - $([System.IO.Path]::Combine($WebotsHome, 'webots.exe'))
-If your installation lives elsewhere, re-run the script with -WebotsHome or update WEBOTS_HOME in the env file.
+If your installation lives elsewhere, re-run the script with -WebotsHome or set WEBOTS_HOME explicitly.
 "@
     exit 1
 }

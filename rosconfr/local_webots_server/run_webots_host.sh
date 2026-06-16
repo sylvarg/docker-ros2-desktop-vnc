@@ -11,7 +11,7 @@ Usage:
   run_webots_host.sh --env-file <path> [server-port]
 
 The env file must define at least WEBOTS_SHARED_HOST_DIR.
-It can also define WEBOTS_HOME.
+It can optionally define WEBOTS_HOME.
 EOF
 }
 
@@ -64,6 +64,41 @@ parse_env_file() {
     done < "$env_file"
 }
 
+get_default_webots_home_candidates() {
+    if [ "$(uname -s)" = "Darwin" ]; then
+        printf '%s\n' "/Applications/Webots.app"
+    else
+        printf '%s\n' "/usr/local/webots"
+    fi
+}
+
+resolve_webots_home() {
+    if [ -n "${WEBOTS_HOME:-}" ]; then
+        if [ ! -d "$WEBOTS_HOME" ]; then
+            printf 'Webots installation not found at: %s\n' "$WEBOTS_HOME" >&2
+            printf 'Set WEBOTS_HOME to your native host Webots installation.\n' >&2
+            exit 1
+        fi
+        return
+    fi
+
+    for candidate in $(get_default_webots_home_candidates); do
+        if [ -d "$candidate" ]; then
+            WEBOTS_HOME=$candidate
+            export WEBOTS_HOME
+            return
+        fi
+    done
+
+    printf 'Webots installation was not found in the default %s locations.\n' "$(uname -s)" >&2
+    printf 'The launcher checked:\n' >&2
+    for candidate in $(get_default_webots_home_candidates); do
+        printf '  - %s\n' "$candidate" >&2
+    done
+    printf 'Set WEBOTS_HOME in the env file or your shell environment.\n' >&2
+    exit 1
+}
+
 if [ "$#" -lt 2 ] || [ "$1" != "--env-file" ]; then
     usage
     exit 1
@@ -79,14 +114,6 @@ fi
 
 parse_env_file "$ENV_FILE"
 
-if [ "$(uname -s)" = "Darwin" ]; then
-    default_webots_home="/Applications/Webots.app"
-else
-    default_webots_home="/usr/local/webots"
-fi
-
-WEBOTS_HOME="${WEBOTS_HOME:-$default_webots_home}"
-
 if [ -z "${WEBOTS_SHARED_HOST_DIR:-}" ]; then
     printf 'WEBOTS_SHARED_HOST_DIR is required in %s\n' "$ENV_FILE" >&2
     exit 1
@@ -97,11 +124,7 @@ if [ ! -f "$SERVER_SCRIPT" ]; then
     exit 1
 fi
 
-if [ ! -d "$WEBOTS_HOME" ]; then
-    printf 'Webots installation not found at: %s\n' "$WEBOTS_HOME" >&2
-    printf 'Set WEBOTS_HOME in the env file or your shell environment.\n' >&2
-    exit 1
-fi
+resolve_webots_home
 
 if ! command -v python3 >/dev/null 2>&1; then
     printf 'python3 was not found on this host.\n' >&2
