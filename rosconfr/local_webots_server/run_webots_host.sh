@@ -1,8 +1,8 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
-set -Eeuo pipefail
+set -eu
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SERVER_SCRIPT="$SCRIPT_DIR/local_simulation_server.py"
 
 usage() {
@@ -16,36 +16,55 @@ EOF
 }
 
 parse_env_file() {
-    local env_file="$1"
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        line="${line%$'\r'}"
-        [[ -z "$line" ]] && continue
-        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    env_file=$1
+    while IFS= read -r line || [ -n "$line" ]; do
+        line=$(printf '%s' "$line" | tr -d '\r')
+        trimmed_line=$(printf '%s' "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
 
-        local key="${line%%=*}"
-        local value="${line#*=}"
+        case "$trimmed_line" in
+            ''|'#'*)
+                continue
+                ;;
+        esac
 
-        key="${key#"${key%%[![:space:]]*}"}"
-        key="${key%"${key##*[![:space:]]}"}"
-        value="${value#"${value%%[![:space:]]*}"}"
-        value="${value%"${value##*[![:space:]]}"}"
+        case "$line" in
+            *=*)
+                key=${line%%=*}
+                value=${line#*=}
+                ;;
+            *)
+                continue
+                ;;
+        esac
 
-        if [[ "$value" == \"*\" && "$value" == *\" ]]; then
-            value="${value:1:${#value}-2}"
-        elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
-            value="${value:1:${#value}-2}"
-        fi
+        key=$(printf '%s' "$key" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+        value=$(printf '%s' "$value" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+
+        case "$value" in
+            \"*\")
+                value=${value#\"}
+                value=${value%\"}
+                ;;
+            \'*\')
+                value=${value#\'}
+                value=${value%\'}
+                ;;
+        esac
 
         case "$key" in
-            WEBOTS_HOME|WEBOTS_SHARED_HOST_DIR)
-                printf -v "$key" '%s' "$value"
-                export "$key"
+            WEBOTS_HOME)
+                WEBOTS_HOME=$value
+                export WEBOTS_HOME
+                ;;
+            WEBOTS_SHARED_HOST_DIR)
+                WEBOTS_SHARED_HOST_DIR=$value
+                export WEBOTS_SHARED_HOST_DIR
                 ;;
         esac
     done < "$env_file"
 }
 
-if [[ $# -lt 2 || "$1" != "--env-file" ]]; then
+if [ "$#" -lt 2 ] || [ "$1" != "--env-file" ]; then
     usage
     exit 1
 fi
@@ -53,14 +72,14 @@ fi
 ENV_FILE="$2"
 shift 2
 
-if [[ ! -f "$ENV_FILE" ]]; then
+if [ ! -f "$ENV_FILE" ]; then
     printf 'Env file not found: %s\n' "$ENV_FILE" >&2
     exit 1
 fi
 
 parse_env_file "$ENV_FILE"
 
-if [[ "$(uname -s)" == "Darwin" ]]; then
+if [ "$(uname -s)" = "Darwin" ]; then
     default_webots_home="/Applications/Webots.app"
 else
     default_webots_home="/usr/local/webots"
@@ -68,17 +87,17 @@ fi
 
 WEBOTS_HOME="${WEBOTS_HOME:-$default_webots_home}"
 
-if [[ -z "${WEBOTS_SHARED_HOST_DIR:-}" ]]; then
+if [ -z "${WEBOTS_SHARED_HOST_DIR:-}" ]; then
     printf 'WEBOTS_SHARED_HOST_DIR is required in %s\n' "$ENV_FILE" >&2
     exit 1
 fi
 
-if [[ ! -f "$SERVER_SCRIPT" ]]; then
+if [ ! -f "$SERVER_SCRIPT" ]; then
     printf 'Repository-local Webots server script not found: %s\n' "$SERVER_SCRIPT" >&2
     exit 1
 fi
 
-if [[ ! -d "$WEBOTS_HOME" ]]; then
+if [ ! -d "$WEBOTS_HOME" ]; then
     printf 'Webots installation not found at: %s\n' "$WEBOTS_HOME" >&2
     printf 'Set WEBOTS_HOME in the env file or your shell environment.\n' >&2
     exit 1
