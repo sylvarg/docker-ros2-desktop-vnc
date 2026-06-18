@@ -244,6 +244,44 @@ configure_rosdep() {
     ensure_owned "$CONTAINER_USER" "$ros_dir"
 }
 
+# Seed the runtime home with any SSH material baked into the image. The copy is
+# intentionally non-destructive so a mounted home directory or user-managed SSH
+# config keeps taking precedence over the image defaults.
+configure_ssh() {
+    local seed_dir="/etc/skel/.ssh"
+    local ssh_dir="$HOME_DIR/.ssh"
+    local seed_path target_path key_path
+
+    [[ -d "$seed_dir" ]] || return 0
+
+    install -d -m 700 "$ssh_dir"
+
+    shopt -s nullglob
+    for seed_path in "$seed_dir"/*; do
+        target_path="$ssh_dir/$(basename "$seed_path")"
+        copy_if_missing "$seed_path" "$target_path" "$CONTAINER_USER"
+    done
+    shopt -u nullglob
+
+    chmod 700 "$ssh_dir"
+
+    if [[ -f "$ssh_dir/config" ]]; then
+        chmod 600 "$ssh_dir/config"
+    fi
+
+    shopt -s nullglob
+    for key_path in "$ssh_dir"/id_*; do
+        if [[ "$key_path" == *.pub ]]; then
+            chmod 644 "$key_path"
+        else
+            chmod 600 "$key_path"
+        fi
+    done
+    shopt -u nullglob
+
+    ensure_owned "$CONTAINER_USER" "$ssh_dir"
+}
+
 # When Webots runs on the host, `webots_ros2` expects a shared host/container
 # folder described as "<host path>:<container path>". The entrypoint only owns
 # the container side of that contract, so it ensures the target directory exists
@@ -324,6 +362,7 @@ main() {
     configure_runtime_dir
     configure_vnc
     configure_rosdep
+    configure_ssh
     configure_webots_shared_folder
     configure_webots_preferences
     configure_supervisor

@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+#
 # Syntax intentionally kept simple so the image can be built with standard
 # `docker buildx build` commands, regardless of whether the parent image is the
 # embedded or external Webots variant.
@@ -25,6 +27,23 @@ USER root
 COPY --chmod=644 ./background/ /usr/local/share/ros-desktop-vnc/background/
 COPY --chmod=644 ./config/90_ros2-desktop-vnc.gschema.override /usr/share/glib-2.0/schemas/90_ros2-desktop-vnc.gschema.override
 RUN glib-compile-schemas /usr/share/glib-2.0/schemas
+
+# Optionally bake a robot SSH private key into the image without storing it in
+# the repository or leaking it through a build argument. When the secret is
+# provided, the jazzy-webots entrypoint will later copy it into the runtime user's
+# home as ~/.ssh/id_rsa_car_rosconfr with the expected SSH permissions.
+RUN --mount=type=secret,id=rosconfr_ssh_key,required=false \
+    if [[ -f /run/secrets/rosconfr_ssh_key ]]; then \
+    install -d -m 700 /etc/skel/.ssh && \
+    cp /run/secrets/rosconfr_ssh_key /etc/skel/.ssh/id_rsa_car_rosconfr && \
+    printf '%s\n' \
+    'Match host="10.10.10.*"' \
+    'IdentityFile ~/.ssh/id_rsa_car_rosconfr' \
+    'StrictHostKeyChecking no' \
+    > /etc/skel/.ssh/config && \
+    chmod 600 /etc/skel/.ssh/config && \
+    chmod 600 /etc/skel/.ssh/id_rsa_car_rosconfr; \
+    fi
 
 # Clone rosconfr into an isolated workspace under /opt, resolve its system
 # dependencies from package.xml, then build a merged ROS overlay so it can be

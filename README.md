@@ -6,6 +6,7 @@ This repository contains several ROS 2 desktop image variants exposed through no
 
 - [`humble/`](./humble/README.md): historical version derived from the original upstream repository
 - [`jazzy-webots/`](./jazzy-webots/README.md): heavily reworked ROS 2 Jazzy image with embedded Webots support on `amd64` and a host-run `external` Webots workflow for macOS and Windows
+- [`rosconfr/`](./rosconfr/README.md): ROSCon France image variant built on top of `jazzy-webots`
 
 ## Repository Contents
 
