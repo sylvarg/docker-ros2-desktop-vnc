@@ -128,6 +128,8 @@ RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
     apt-get update -q && \
     apt-get install -y \
     ros-${ROS_DISTRO}-${INSTALL_PACKAGE} \
+    ros-${ROS_DISTRO}-compressed-image-transport \
+    ros-${ROS_DISTRO}-joint-state-publisher \
     ros-${ROS_DISTRO}-webots-ros2 \
     python3-argcomplete \
     python3-colcon-common-extensions \
@@ -193,8 +195,9 @@ COPY --chmod=644 ./background/ /usr/local/share/ros-desktop-vnc/background/
 COPY --chmod=755 ./desktop/ /usr/local/share/ros-desktop-vnc/desktop/
 
 # Compile the updated GLib schemas and fix permissions on shared asset directories.
-RUN glib-compile-schemas /usr/share/glib-2.0/schemas && \
-    chmod 755 ${ROS_DESKTOP_VNC_DIR} /usr/local/share/ros-desktop-vnc /usr/local/share/ros-desktop-vnc/background /usr/local/share/ros-desktop-vnc/desktop
+RUN install -d -m 0755 ${ROS_DESKTOP_VNC_DIR}/bashrc.d && \
+    glib-compile-schemas /usr/share/glib-2.0/schemas && \
+    chmod 755 ${ROS_DESKTOP_VNC_DIR} ${ROS_DESKTOP_VNC_DIR}/bashrc.d /usr/local/share/ros-desktop-vnc /usr/local/share/ros-desktop-vnc/background /usr/local/share/ros-desktop-vnc/desktop
 
 # Override the default Webots project layout only when the Linux simulator is
 # bundled in the image. The external backend uses the same wbproj template via

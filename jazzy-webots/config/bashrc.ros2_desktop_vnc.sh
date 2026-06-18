@@ -12,6 +12,14 @@ if [ -d "/usr/local/webots" ]; then
   export ROS2_WEBOTS_HOME="${ROS2_WEBOTS_HOME:-/usr/local/webots}"
 fi
 
+# Source image-provided shell overlays before the user workspace so a mounted
+# development workspace can still override them when needed.
+for ros_desktop_vnc_bashrc in "${ROS_DESKTOP_VNC_DIR}/bashrc.d/"*.sh; do
+  if [ -f "$ros_desktop_vnc_bashrc" ]; then
+    source "$ros_desktop_vnc_bashrc"
+  fi
+done
+
 if [ -f "$HOME/ros2_ws/install/local_setup.bash" ]; then
   source "$HOME/ros2_ws/install/local_setup.bash"
 fi

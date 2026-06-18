@@ -74,9 +74,11 @@ RUN install -d "${ROSCONFR_WS}/src" && \
     rm -rf "${ROSCONFR_WS}/build" "${ROSCONFR_WS}/log" && \
     chmod -R a+rX "${ROSCONFR_WS}"
 
-# Every interactive shell in jazzy-webots already sources
-# ${ROS_DESKTOP_VNC_DIR}/bashrc.sh. Appending the rosconfr overlay there makes
-# the package immediately available to root and to the runtime desktop user,
-# without changing the base image.
-RUN printf '\n# Source the prebuilt rosconfr overlay when it is present in the image.\nif [ -f %s/install/local_setup.bash ]; then\n  source %s/install/local_setup.bash\nfi\n' \
-    "${ROSCONFR_WS}" "${ROSCONFR_WS}" >> "${ROS_DESKTOP_VNC_DIR}/bashrc.sh"
+# Every interactive shell in jazzy-webots sources snippets from
+# ${ROS_DESKTOP_VNC_DIR}/bashrc.d before it sources the user workspace. Install
+# the rosconfr overlay there so a mounted /home/.../ros2_ws remains the last
+# overlay loaded in interactive shells.
+RUN install -d "${ROS_DESKTOP_VNC_DIR}/bashrc.d" && \
+    printf '# Source the prebuilt rosconfr overlay when it is present in the image.\nif [ -f %s/install/local_setup.bash ]; then\n  source %s/install/local_setup.bash\nfi\n' \
+    "${ROSCONFR_WS}" "${ROSCONFR_WS}" > "${ROS_DESKTOP_VNC_DIR}/bashrc.d/20-rosconfr.sh" && \
+    chmod 644 "${ROS_DESKTOP_VNC_DIR}/bashrc.d/20-rosconfr.sh"
