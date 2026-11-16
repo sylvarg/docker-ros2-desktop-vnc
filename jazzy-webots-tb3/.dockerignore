@@ -1,0 +1,8 @@
+**
+!Dockerfile
+!background/
+!background/**
+!config/
+!config/**
+!patches/
+!patches/**

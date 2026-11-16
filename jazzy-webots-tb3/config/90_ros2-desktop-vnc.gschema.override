@@ -1,0 +1,13 @@
+[org.mate.panel]
+default-layout='ros2-desktop-vnc'
+
+[org.mate.background]
+picture-filename='/usr/local/share/ros-desktop-vnc/background/wallpaper_tb3.png'
+picture-options='zoom'
+
+[org.mate.screensaver]
+idle-activation-enabled=false
+lock-enabled=false
+
+[org.mate.session]
+idle-delay=uint32 0

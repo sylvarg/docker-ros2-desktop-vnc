@@ -1,0 +1,182 @@
+# Text clipboard support for the noVNC 1.4 clipboard fork.
+# Keep native browser paste available and refresh automatic sync on refocus.
+
+--- a/core/clipboard.js
++++ b/core/clipboard.js
+@@ -7,72 +7,95 @@
+ export default class Clipboard {
+     constructor(target) {
+         this._target = target;
+-
++        this._readPending = false;
++        this._readGeneration = 0;
+         this._eventHandlers = {
+-            'copy': this._handleCopy.bind(this),
+-            'focus': this._handleFocus.bind(this)
++            copy: this._handleCopy.bind(this),
++            focus: this._handleFocus.bind(this),
++            paste: this._handlePaste.bind(this),
++            windowFocus: this._handleWindowFocus.bind(this),
+         };
+-
+-        // ===== EVENT HANDLERS =====
+-
+         this.onpaste = () => {};
++        this.onnativepaste = () => {};
+     }
+ 
+-    // ===== PRIVATE METHODS =====
+-
+     async _handleCopy(e) {
++        this._readGeneration++;
+         try {
+             if (navigator.permissions && navigator.permissions.query) {
+                 const permission = await navigator.permissions.query({ name: "clipboard-write", allowWithoutGesture: false });
+                 if (permission.state === 'denied') return;
+             }
+         } catch (err) {
+-            // Some browsers might error due to lack of support, e.g. Firefox.
++            // Firefox and Safari do not expose this permission.
+         }
+-
+-        if (navigator.clipboard.writeText) {
++        if (navigator.clipboard && navigator.clipboard.writeText) {
+             try {
+                 await navigator.clipboard.writeText(e.clipboardData.getData('text/plain'));
+-            } catch (e) {
+-                /* Do nothing */
++            } catch (err) {
++                console.debug("noVNC clipboard write unavailable:", err.name);
+             }
+         }
+     }
+ 
+     async _handleFocus() {
++        if (this._readPending || !navigator.clipboard || !navigator.clipboard.readText) return;
++        this._readPending = true;
++        const generation = this._readGeneration;
+         try {
+-            if (navigator.permissions && navigator.permissions.query) {
+-                const permission = await navigator.permissions.query({ name: "clipboard-read", allowWithoutGesture: false });
+-                if (permission.state === 'denied') return;
+-            }
+-        } catch (err) {
+-            // Some browsers might error due to lack of support, e.g. Firefox.
+-        }
+-
+-        if (navigator.clipboard.readText) {
++            // Automatic sync must not open Firefox/Safari's paste prompts.
++            // Their native paste shortcut works without this async permission.
++            if (!navigator.permissions || !navigator.permissions.query) return;
++            let permission;
+             try {
+-                const data = await navigator.clipboard.readText();
+-                this.onpaste(data);
+-            } catch (e) {
+-                /* Do nothing */
++                permission = await navigator.permissions.query({ name: 'clipboard-read' });
++            } catch (err) {
+                 return;
+             }
++            if (permission.state !== 'granted') return;
++            const text = await navigator.clipboard.readText();
++            // A native paste or a remote copy may supersede a pending read.
++            if (generation === this._readGeneration) this.onpaste(text);
++        } catch (err) {
++            // Native paste remains available without async clipboard permission.
++            console.debug("noVNC clipboard read unavailable; use native paste:", err.name);
++        } finally {
++            this._readPending = false;
+         }
+     }
+ 
+-    // ===== PUBLIC METHODS =====
++    _handleWindowFocus() {
++        if (document.activeElement === this._target) this._handleFocus();
++    }
++
++    _handlePaste(e) {
++        if (document.activeElement !== this._target) return;
++        if (!e.clipboardData || !Array.from(e.clipboardData.types).includes('text/plain')) return;
++        e.preventDefault();
++        this._readGeneration++;
++        this.onnativepaste(e.clipboardData.getData('text/plain'));
++    }
+ 
+     grab() {
+-        if (!Clipboard.isSupported) return;
++        if (!this._target) return;
+         this._target.addEventListener('copy', this._eventHandlers.copy);
+         this._target.addEventListener('focus', this._eventHandlers.focus);
++        // Clicking an already focused canvas does not emit another focus event.
++        this._target.addEventListener('mousedown', this._eventHandlers.focus);
++        // Some browsers dispatch canvas paste on the document body instead.
++        document.addEventListener('paste', this._eventHandlers.paste);
++        window.addEventListener('focus', this._eventHandlers.windowFocus);
+     }
+ 
+     ungrab() {
+-        if (!Clipboard.isSupported) return;
++        if (!this._target) return;
++        this._readGeneration++;
+         this._target.removeEventListener('copy', this._eventHandlers.copy);
+         this._target.removeEventListener('focus', this._eventHandlers.focus);
++        this._target.removeEventListener('mousedown', this._eventHandlers.focus);
++        document.removeEventListener('paste', this._eventHandlers.paste);
++        window.removeEventListener('focus', this._eventHandlers.windowFocus);
+     }
+ }
+ 
+-Clipboard.isSupported = (navigator && navigator.clipboard) ? true : false;
++Clipboard.isSupported = !!(navigator && navigator.clipboard);
+--- a/core/input/keyboard.js
++++ b/core/input/keyboard.js
+@@ -85,6 +85,17 @@
+ 
+     _handleKeyDown(e) {
+         const code = this._getKeyCode(e);
++
++        // Let the browser deliver a real paste event with its clipboard data.
++        // Preventing this shortcut also prevents paste in Firefox/Safari.
++        const isApple = browser.isMac() || browser.isIOS();
++        if (code === 'KeyV' && !e.altKey &&
++            ((isApple && e.metaKey && !e.ctrlKey) ||
++             (!isApple && e.ctrlKey && !e.metaKey))) {
++            this._allKeysUp();
++            return;
++        }
++
+         let keysym = KeyboardUtil.getKeysym(e);
+ 
+         // Windows doesn't have a proper AltGr, but handles it using
+--- a/core/rfb.js
++++ b/core/rfb.js
+@@ -263,6 +263,7 @@
+ 
+         this._clipboard = new Clipboard(this._canvas);
+         this._clipboard.onpaste = this.clipboardPasteFrom.bind(this);
++        this._clipboard.onnativepaste = this._handleNativePaste.bind(this);
+ 
+         this._keyboard = new Keyboard(this._canvas);
+         this._keyboard.onkeyevent = this._handleKeyEvent.bind(this);
+@@ -497,6 +498,20 @@
+ 
+     blur() {
+         this._canvas.blur();
++    }
++
++    _handleNativePaste(text) {
++        if (this._rfbConnectionState !== 'connected' || this._viewOnly) return;
++
++        this._keyboard._allKeysUp();
++        this.clipboardPasteFrom(text);
++        // Clipboard notification and paste keys travel over the same ordered
++        // connection. TigerVNC fetches the clipboard when the app requests it.
++        // Shift+Insert pastes in both VTE terminals and normal Linux editors.
++        this.sendKey(0xffe1, 'ShiftLeft', true);
++        this.sendKey(0xff63, 'Insert', true);
++        this.sendKey(0xff63, 'Insert', false);
++        this.sendKey(0xffe1, 'ShiftLeft', false);
+     }
+ 
+     clipboardPasteFrom(text) {

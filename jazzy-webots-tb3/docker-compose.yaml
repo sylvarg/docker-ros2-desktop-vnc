@@ -1,0 +1,24 @@
+name: ros2-jazzy-tb3
+
+services:
+  ros-desktop-vnc:
+    image: ros2-desktop-vnc:jazzy-webots-tb3
+    container_name: ros2_desktop_vnc_jazzy_tb3
+    environment:
+      TZ: "${TZ:-Europe/Paris}"
+      VNC_NO_PASSWORD: "true"
+      WEBOTS_SHARED_FOLDER: "${WEBOTS_SHARED_HOST_DIR:?Set WEBOTS_SHARED_HOST_DIR in the selected env file}:/home/turtle/webots_shared"
+    shm_size: "512m"
+    restart: unless-stopped
+    hostname: remotepc
+    extra_hosts:
+      - "remotepc:127.0.0.1"
+    ports:
+      - "6080:6080"
+    volumes:
+      - type: bind
+        source: ${ROS2_WS_SRC_HOST_DIR:?Set ROS2_WS_SRC_HOST_DIR in the selected env file}
+        target: /home/turtle/ros2_ws/src
+      - type: bind
+        source: ${WEBOTS_SHARED_HOST_DIR:?Set WEBOTS_SHARED_HOST_DIR in the selected env file}
+        target: /home/turtle/webots_shared
