@@ -156,13 +156,14 @@ Inherited defaults are `TURTLEBOT3_MODEL=burger`, `ROS_DOMAIN_ID=30` and
 at the end of `/home/turtle/.bashrc` (and the root user's `.bashrc`):
 
 ```bash
-export ROBOT_IP=192.168.0.248
+export TB3_IP=192.168.0.248
 ```
 
 Students can use `eb` to edit that file and `sb` to reload it. This explicit
 assignment takes precedence over the shared default, including after changing
 the address in an already-open shell. It is specific to the TB3 variant.
-The `zenoh` alias connects to `tcp/$ROBOT_IP:7447`; it does not start automatically.
+If upgrading a saved `.bashrc`, rename its previous `ROBOT_IP` assignment to
+`TB3_IP`. The `zenoh` alias connects to `tcp/$TB3_IP:7447`; it does not start automatically.
 See the [Jazzy documentation](../jazzy-webots/README.md) for the robot-side bridge
 and the shared-folder architecture.
 

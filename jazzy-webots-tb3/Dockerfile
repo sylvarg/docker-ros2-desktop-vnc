@@ -67,8 +67,9 @@ RUN patch --batch --forward -p1 -d /usr/lib/novnc < ${ROS_DESKTOP_VNC_DIR}/novnc
 # Keep the robot address directly editable in each user's .bashrc. Append it
 # after the shared initialization so editing it and running `sb` takes effect
 # even when the shell already exports the previous address.
-RUN for bashrc_path in /etc/skel/.bashrc /root/.bashrc; do \
-        printf '\n# Adresse IP du TurtleBot3 pour la commande zenoh.\n# Modifier cette ligne puis recharger avec : sb\nexport ROBOT_IP=192.168.0.248\n' >> "$bashrc_path"; \
+RUN sed -i 's/ROBOT_IP/TB3_IP/g' "${ROS_DESKTOP_VNC_DIR}/bashrc.sh" && \
+    for bashrc_path in /etc/skel/.bashrc /root/.bashrc; do \
+        printf '\n# Adresse IP du TurtleBot3 pour la commande zenoh.\n# Modifier cette ligne puis recharger avec : sb\nexport TB3_IP=192.168.0.248\n' >> "$bashrc_path"; \
     done
 
 # The inherited entrypoint seeds ~/.ssh without overwriting existing files and

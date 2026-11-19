@@ -1,0 +1,20 @@
+{
+  mode: "client",
+  scouting: {
+    multicast: { enabled: false },
+    gossip: { enabled: false },
+  },
+  plugins: {
+    ros2dds: {
+      // Keep the local Ned2 and simulation clock out of the TurtleBot3 link.
+      deny: {
+        publishers: ["/ned2/.*", "/clock"],
+        subscribers: ["/ned2/.*", "/clock"],
+        service_servers: ["/ned2/.*"],
+        service_clients: ["/ned2/.*"],
+        action_servers: ["/ned2/.*"],
+        action_clients: ["/ned2/.*"],
+      },
+    },
+  },
+}

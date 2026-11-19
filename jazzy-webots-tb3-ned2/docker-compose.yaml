@@ -1,0 +1,9 @@
+name: ros2-jazzy-tb3-ned2
+
+services:
+  ros-desktop-vnc:
+    extends:
+      file: ../jazzy-webots-tb3/docker-compose.yaml
+      service: ros-desktop-vnc
+    image: ros2-desktop-vnc:jazzy-webots-tb3-ned2
+    container_name: ros2_desktop_vnc_jazzy_tb3_ned2
