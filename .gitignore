@@ -1,3 +1,5 @@
 
 jazzy/.DS_Store
 .DS_Store
+/jazzy-webots-tb3/ssh/*
+!/jazzy-webots-tb3/ssh/id_ed25519_tb3_tp.pub

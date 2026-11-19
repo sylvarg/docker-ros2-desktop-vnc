@@ -2,12 +2,12 @@ name: rosconfr
 
 services:
   ros-desktop-vnc:
-    image: sylvarg/ros2-desktop-vnc:rosconfr-external
+    image: ros2-desktop-vnc:jazzy-webots-rosconfr
     environment:
       TZ: "${TZ:?Set TZ in the selected env file}"
       VNC_NO_PASSWORD: "true"
       WEBOTS_BACKEND: "external"
-      WEBOTS_SHARED_FOLDER: "${WEBOTS_SHARED_HOST_DIR:?Set WEBOTS_SHARED_HOST_DIR in the selected env file}:/home/turtle/webots_shared"
+      WEBOTS_SHARED_FOLDER: "${WEBOTS_SHARED_HOST_DIR:?Set WEBOTS_SHARED_HOST_DIR in the selected env file}:/home/turtle/.webots_shared"
     shm_size: "512m"
     restart: unless-stopped
     container_name: ros2_rosconfr
@@ -22,4 +22,4 @@ services:
         target: /home/turtle/ros2_ws/src
       - type: bind
         source: ${WEBOTS_SHARED_HOST_DIR:?Set WEBOTS_SHARED_HOST_DIR in the selected env file}
-        target: /home/turtle/webots_shared
+        target: /home/turtle/.webots_shared

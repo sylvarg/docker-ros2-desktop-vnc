@@ -11,7 +11,7 @@ USER root
 # This variant always uses native host Webots. Only the host-side shared path
 # needs overriding on Windows or when using a different exchange directory.
 ENV WEBOTS_BACKEND=external \
-    WEBOTS_SHARED_FOLDER=/tmp/ros2-desktop-vnc-webots-shared:/home/turtle/webots_shared \
+    WEBOTS_SHARED_FOLDER=/tmp/ros2-desktop-vnc-webots-shared:/home/turtle/.webots_shared \
     TURTLEBOT3_WS=/opt/turtlebot3_ws
 
 # URDF controls and vision compatibility for the labs. The parent installs pip

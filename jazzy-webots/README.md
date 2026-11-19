@@ -66,7 +66,12 @@ Host prerequisites:
 
 Docker will normally build the container for the host architecture automatically, which is the recommended path for this `external` mode.
 
-1. Build and start the container:
+1. From the `jazzy-webots` directory, build and start the container. On Windows,
+   set the host shared directory in the PowerShell session running Compose:
+
+```powershell
+$env:WEBOTS_SHARED_HOST_DIR = Join-Path $env:TEMP "ros2-desktop-vnc-webots-shared"
+```
 
 ```sh
 docker compose -f docker-compose-external.yaml up --build
@@ -87,7 +92,7 @@ services:
       TZ: "Europe/Paris"
       VNC_NO_PASSWORD: "true"
       WEBOTS_BACKEND: "external"
-      WEBOTS_SHARED_FOLDER: "${WEBOTS_SHARED_HOST_DIR:-/tmp/ros2-desktop-vnc-webots-shared}:${CONTAINER_WEBOTS_SHARED_DIR:-/home/turtle/webots_shared}"
+      WEBOTS_SHARED_FOLDER: "${WEBOTS_SHARED_HOST_DIR:-/tmp/ros2-desktop-vnc-webots-shared}:${CONTAINER_WEBOTS_SHARED_DIR:-/home/turtle/.webots_shared}"
     hostname: remotepc
     extra_hosts:
       - "remotepc:127.0.0.1"
@@ -96,22 +101,22 @@ services:
       - /path/to/your/ws/src:/home/turtle/ros2_ws/src
       - type: bind
         source: ${WEBOTS_SHARED_HOST_DIR:-/tmp/ros2-desktop-vnc-webots-shared}
-        target: ${CONTAINER_WEBOTS_SHARED_DIR:-/home/turtle/webots_shared}
+        target: ${CONTAINER_WEBOTS_SHARED_DIR:-/home/turtle/.webots_shared}
 ```
 
-2. Start the Webots server on the host OS:
+2. From the `jazzy-webots` directory, start the shared Webots server on the host:
 
 macOS / Linux:
 
 ```sh
-bash local_webots_server/run_webots_host.sh
+sh ../local_webots_server/run_webots_host.sh
 ```
 
 Windows (PowerShell):
 
 ```powershell
 $env:WEBOTS_SHARED_HOST_DIR = Join-Path $env:TEMP "ros2-desktop-vnc-webots-shared"
-.\local_webots_server\run_webots_host.cmd
+..\local_webots_server\run_webots_host.cmd
 ```
 
 If Python is not already available on Windows, the launcher will ask whether it
@@ -138,31 +143,22 @@ the host OS running Webots natively via `local_simulation_server.py`. Communicat
 By default, `WEBOTS_SHARED_FOLDER` is set to:
 
 - host path: `/tmp/ros2-desktop-vnc-webots-shared`
-- container path: `/home/turtle/webots_shared`
+- container path: `/home/turtle/.webots_shared`
 
 Note that the variable `WEBOTS_SHARED_FOLDER` in the compose file:
 
 ```text
-WEBOTS_SHARED_FOLDER=${WEBOTS_SHARED_HOST_DIR:-/tmp/ros2-desktop-vnc-webots-shared}:${CONTAINER_WEBOTS_SHARED_DIR:-/home/turtle/webots_shared}
+WEBOTS_SHARED_FOLDER=${WEBOTS_SHARED_HOST_DIR:-/tmp/ros2-desktop-vnc-webots-shared}:${CONTAINER_WEBOTS_SHARED_DIR:-/home/turtle/.webots_shared}
 ```
 
 does not create the Docker mount by itself. The actual bind mount is defined later in [`docker-compose-external.yaml`](./docker-compose-external.yaml).
 
-The recommended host helpers are now grouped under [`local_webots_server/`](./local_webots_server/):
-
-- [`local_webots_server/local_simulation_server.py`](./local_webots_server/local_simulation_server.py): repository-local, cross-platform Python server
-- [`local_webots_server/run_webots_host.sh`](./local_webots_server/run_webots_host.sh): Unix launcher for Linux and macOS
-- [`local_webots_server/run_webots_host.ps1`](./local_webots_server/run_webots_host.ps1): Windows launcher
-- [`local_webots_server/run_webots_host.cmd`](./local_webots_server/run_webots_host.cmd): convenience wrapper for PowerShell execution-policy bypass
-
-These launchers:
-
-- check `WEBOTS_HOME` or derive a default host installation path
-- prepare the shared directory used by Docker and Webots
-- locate the native Webots executable on the current host OS
-- and finally start the repository-local Webots host server
-
-The older helpers under [`scripts/`](./scripts/) are kept in the repository unchanged, but the `local_webots_server/` workflow is now the preferred path because it no longer depends on downloading and patching an upstream Python file at runtime.
+The [shared host launchers](../local_webots_server/README.md) find the native
+Webots installation, prepare the host directory and start the Python server.
+For Jazzy external, the launchers can be called without arguments. If you set
+`WEBOTS_SHARED_HOST_DIR`, use the same value in Compose and the host launcher.
+You can also pass the same optional root `env.*` profile to both commands
+with `--env-file`.
 
 ## Windows
 
@@ -172,7 +168,7 @@ The Windows workflow mirrors the macOS one:
 - the Linux Docker container runs ROS 2 and `webots_ros2`
 - the repository-local `local_simulation_server.py` bridges the two
 - the shared folder is still described with `WEBOTS_SHARED_FOLDER`, but the image now patches `webots_ros2_driver` so Windows drive-letter paths such as `C:\...` remain parseable
-- if Python is missing, `local_webots_server/run_webots_host.cmd` can propose installation of the official Python Install Manager before launching the host server
+- if Python is missing, the shared [Windows launcher](../local_webots_server/run_webots_host.cmd) can offer to install the official Python Install Manager
 
 Recommended prerequisites on Windows:
 

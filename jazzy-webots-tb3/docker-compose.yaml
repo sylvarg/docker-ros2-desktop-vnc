@@ -7,7 +7,7 @@ services:
     environment:
       TZ: "${TZ:-Europe/Paris}"
       VNC_NO_PASSWORD: "true"
-      WEBOTS_SHARED_FOLDER: "${WEBOTS_SHARED_HOST_DIR:?Set WEBOTS_SHARED_HOST_DIR in the selected env file}:/home/turtle/webots_shared"
+      WEBOTS_SHARED_FOLDER: "${WEBOTS_SHARED_HOST_DIR:?Set WEBOTS_SHARED_HOST_DIR in the selected env file}:/home/turtle/.webots_shared"
     shm_size: "512m"
     restart: unless-stopped
     hostname: remotepc
@@ -21,4 +21,4 @@ services:
         target: /home/turtle/ros2_ws/src
       - type: bind
         source: ${WEBOTS_SHARED_HOST_DIR:?Set WEBOTS_SHARED_HOST_DIR in the selected env file}
-        target: /home/turtle/webots_shared
+        target: /home/turtle/.webots_shared

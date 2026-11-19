@@ -19,7 +19,7 @@ services:
       #   <host shared path>:<guest shared path>
       # Docker mounts the host directory at the container path below so
       # webots_ros2 can exchange worlds/resources with the host Webots process.
-      WEBOTS_SHARED_FOLDER: "${WEBOTS_SHARED_HOST_DIR:-/tmp/ros2-desktop-vnc-webots-shared}:${CONTAINER_WEBOTS_SHARED_DIR:-/home/turtle/webots_shared}"
+      WEBOTS_SHARED_FOLDER: "${WEBOTS_SHARED_HOST_DIR:-/tmp/ros2-desktop-vnc-webots-shared}:${CONTAINER_WEBOTS_SHARED_DIR:-/home/turtle/.webots_shared}"
     hostname: remotepc
     extra_hosts:
       - "remotepc:127.0.0.1"
@@ -27,4 +27,4 @@ services:
     volumes:
       - type: bind
         source: ${WEBOTS_SHARED_HOST_DIR:-/tmp/ros2-desktop-vnc-webots-shared}
-        target: ${CONTAINER_WEBOTS_SHARED_DIR:-/home/turtle/webots_shared}
+        target: ${CONTAINER_WEBOTS_SHARED_DIR:-/home/turtle/.webots_shared}

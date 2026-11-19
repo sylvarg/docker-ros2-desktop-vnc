@@ -8,10 +8,10 @@ SERVER_SCRIPT="$SCRIPT_DIR/local_simulation_server.py"
 usage() {
     cat >&2 <<'EOF'
 Usage:
-  run_webots_host.sh --env-file <path> [server-port]
+  run_webots_host.sh [--env-file <path>] [server-port]
 
-The env file must define at least WEBOTS_SHARED_HOST_DIR.
-It can optionally define WEBOTS_HOME.
+Set WEBOTS_SHARED_HOST_DIR in the env file used by Compose.
+WEBOTS_HOME is optional.
 EOF
 }
 
@@ -99,24 +99,34 @@ resolve_webots_home() {
     exit 1
 }
 
-if [ "$#" -lt 2 ] || [ "$1" != "--env-file" ]; then
-    usage
-    exit 1
-fi
+ENV_FILE=
+case "${1:-}" in
+    --env-file)
+        if [ "$#" -lt 2 ] || [ -z "$2" ]; then
+            usage
+            exit 1
+        fi
+        ENV_FILE=$2
+        shift 2
+        ;;
+    -h|--help)
+        usage
+        exit 0
+        ;;
+esac
 
-ENV_FILE="$2"
-shift 2
-
-if [ ! -f "$ENV_FILE" ]; then
-    printf 'Env file not found: %s\n' "$ENV_FILE" >&2
-    exit 1
-fi
-
-parse_env_file "$ENV_FILE"
-
-if [ -z "${WEBOTS_SHARED_HOST_DIR:-}" ]; then
-    printf 'WEBOTS_SHARED_HOST_DIR is required in %s\n' "$ENV_FILE" >&2
-    exit 1
+if [ -n "$ENV_FILE" ]; then
+    if [ ! -f "$ENV_FILE" ]; then
+        printf 'Env file not found: %s\n' "$ENV_FILE" >&2
+        exit 1
+    fi
+    parse_env_file "$ENV_FILE"
+    if [ -z "${WEBOTS_SHARED_HOST_DIR:-}" ]; then
+        printf 'WEBOTS_SHARED_HOST_DIR is required in %s\n' "$ENV_FILE" >&2
+        exit 1
+    fi
+else
+    WEBOTS_SHARED_HOST_DIR=${WEBOTS_SHARED_HOST_DIR:-/tmp/ros2-desktop-vnc-webots-shared}
 fi
 
 if [ ! -f "$SERVER_SCRIPT" ]; then
@@ -138,6 +148,8 @@ export WEBOTS_HOME
 export WEBOTS_SHARED_HOST_DIR
 
 printf 'Launching repository-local Webots host server...\n'
-printf '  ENV_FILE=%s\n' "$ENV_FILE"
+if [ -n "$ENV_FILE" ]; then
+    printf '  ENV_FILE=%s\n' "$ENV_FILE"
+fi
 
 exec python3 "$SERVER_SCRIPT" "$@"

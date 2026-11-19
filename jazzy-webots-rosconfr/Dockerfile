@@ -8,7 +8,7 @@
 # - sylvarg/ros2-desktop-vnc:jazzy-webots-embedded
 # - sylvarg/ros2-desktop-vnc:jazzy-webots-external
 #
-# This keeps the rosconfr image build UX close to jazzy-webots: choose the
+# This keeps the jazzy-webots-rosconfr build close to jazzy-webots: choose the
 # flavor at build time through WEBOTS_BACKEND instead of editing the Dockerfile.
 ARG BASE_IMAGE_REPOSITORY=sylvarg/ros2-desktop-vnc
 ARG WEBOTS_BACKEND=embedded
@@ -56,7 +56,7 @@ RUN --mount=type=secret,id=rosconfr_ssh_key,required=false \
 # from the final image. We therefore hide the inherited colcon defaults for the
 # duration of the image build so `/opt/rosconfr/install` becomes self-contained.
 RUN install -d "${ROSCONFR_WS}/src" && \
-    git clone --depth 1 --branch "${ROSCONFR_REF}" "${ROSCONFR_REPOSITORY}" "${ROSCONFR_WS}/src/rosconfr" && \
+    git clone --depth 1 --branch "${ROSCONFR_REF}" "${ROSCONFR_REPOSITORY}" "${ROSCONFR_WS}/src/" && \
     if [[ -f /root/.colcon/defaults.yaml ]]; then \
     mv /root/.colcon/defaults.yaml /tmp/rosconfr-colcon-defaults.yaml; \
     fi && \

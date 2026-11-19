@@ -1,28 +1,30 @@
+[CmdletBinding(PositionalBinding = $false)]
 param(
-    [string]$WebotsHome = $(if ($env:WEBOTS_HOME) { $env:WEBOTS_HOME } else { "C:\Program Files\Webots" }),
-    [string]$WebotsSharedHostDir = $(if ($env:WEBOTS_SHARED_HOST_DIR) { $env:WEBOTS_SHARED_HOST_DIR } else { (Join-Path ([System.IO.Path]::GetTempPath()) "ros2-desktop-vnc-webots-shared") }),
+    [string]$EnvFile,
+    [string]$WebotsHome,
+    [string]$WebotsSharedHostDir = $(if ($env:WEBOTS_SHARED_HOST_DIR) { $env:WEBOTS_SHARED_HOST_DIR } else { "" }),
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$ServerArguments
 )
 
 $ErrorActionPreference = "Stop"
 
-# This launcher is the Windows companion of `run_webots_host.sh`.
-# The actual Webots host server logic is intentionally centralized in the
-# repository-local Python script `local_simulation_server.py`; this PowerShell
-# wrapper only performs Windows-specific bootstrap work:
-# - find the local Python launcher, or offer installation if Python is missing
-# - resolve the native Windows Webots executable path
-# - prepare the shared directory used by Docker and Webots
-# - export the environment variables consumed by the Python server
-#
-# Keeping this wrapper thin avoids the previous "download then patch" flow and
-# makes the platform differences explicit and easier to debug.
-
 $ServerScript = Join-Path $PSScriptRoot "local_simulation_server.py"
 $PythonInstallManagerUrl = "https://www.python.org/downloads/latest/pymanager/"
 $PythonInstallManagerWingetId = "9NQ7512CXL7T"
 $PythonInstallManagerWingetSource = "msstore"
+
+function Show-Usage {
+    Write-Host @"
+Usage:
+  .\run_webots_host.cmd [--env-file <path>] [server-port]
+  .\run_webots_host.ps1 [-EnvFile <path>] [server-port]
+
+Optional PowerShell named arguments:
+  -WebotsHome <path>
+  -WebotsSharedHostDir <path>
+"@
+}
 
 function Confirm-YesNo {
     param(
@@ -31,6 +33,44 @@ function Confirm-YesNo {
 
     $answer = Read-Host "$Prompt [Y/n]"
     return [string]::IsNullOrWhiteSpace($answer) -or $answer -match '^(?i:y|yes)$'
+}
+
+function Import-EnvFileValues {
+    param(
+        [string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        Write-Error "Env file not found: $Path"
+        exit 1
+    }
+
+    $values = @{}
+    foreach ($line in Get-Content -LiteralPath $Path) {
+        $trimmed = $line.Trim()
+        if ([string]::IsNullOrWhiteSpace($trimmed) -or $trimmed.StartsWith('#')) {
+            continue
+        }
+
+        $separatorIndex = $trimmed.IndexOf('=')
+        if ($separatorIndex -lt 1) {
+            continue
+        }
+
+        $key = $trimmed.Substring(0, $separatorIndex).Trim()
+        $value = $trimmed.Substring($separatorIndex + 1).Trim()
+
+        if (
+            ($value.StartsWith('"') -and $value.EndsWith('"')) -or
+            ($value.StartsWith("'") -and $value.EndsWith("'"))
+        ) {
+            $value = $value.Substring(1, $value.Length - 2)
+        }
+
+        $values[$key] = $value
+    }
+
+    return $values
 }
 
 function Get-WebotsExecutablePath {
@@ -54,6 +94,47 @@ function Get-WebotsExecutablePath {
     return $null
 }
 
+function Get-DefaultWebotsHomeCandidates {
+    $candidates = New-Object System.Collections.Generic.List[string]
+    $candidates.Add("C:\Program Files\Webots")
+
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        $candidates.Add((Join-Path $env:LOCALAPPDATA "Programs\Webots"))
+    }
+
+    return $candidates.ToArray()
+}
+
+function Resolve-WebotsHome {
+    param(
+        [string]$ExplicitWebotsHome
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitWebotsHome)) {
+        if (-not (Test-Path -LiteralPath $ExplicitWebotsHome -PathType Container)) {
+            Write-Error "Webots installation not found at: $ExplicitWebotsHome`nSet WEBOTS_HOME to your native Windows Webots installation."
+            exit 1
+        }
+
+        return $ExplicitWebotsHome
+    }
+
+    foreach ($candidate in Get-DefaultWebotsHomeCandidates) {
+        if (Test-Path -LiteralPath $candidate -PathType Container) {
+            return $candidate
+        }
+    }
+
+    $searchedPaths = (Get-DefaultWebotsHomeCandidates) -join "`n  - "
+    Write-Error @"
+Webots installation was not found in the default Windows locations.
+The launcher checked:
+  - $searchedPaths
+Set WEBOTS_HOME in the env file or your shell environment, or re-run the script with -WebotsHome.
+"@
+    exit 1
+}
+
 function Get-PythonLauncherCandidate {
     $candidates = New-Object System.Collections.Generic.List[object]
     $windowsAppsDir = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps"
@@ -64,7 +145,7 @@ function Get-PythonLauncherCandidate {
             Executable = $pyCommand.Source
             Arguments = @("-3")
             Label = "py -3"
-            RequiresVerification = $false
+            RequiresVerification = $true
         })
     }
 
@@ -74,7 +155,7 @@ function Get-PythonLauncherCandidate {
             Executable = $pyAliasPath
             Arguments = @("-3")
             Label = "py -3"
-            RequiresVerification = $false
+            RequiresVerification = $true
         })
     }
 
@@ -85,7 +166,7 @@ function Get-PythonLauncherCandidate {
                 Executable = $pyPath
                 Arguments = @("-3")
                 Label = "py -3"
-                RequiresVerification = $false
+                RequiresVerification = $true
             })
         }
     }
@@ -101,10 +182,6 @@ function Get-PythonLauncherCandidate {
     }
 
     foreach ($candidate in $candidates) {
-        if (-not $candidate.RequiresVerification) {
-            return $candidate
-        }
-
         try {
             $testArgs = @($candidate.Arguments + @("-c", "import sys"))
             & $candidate.Executable @testArgs *> $null
@@ -151,6 +228,68 @@ function Install-PythonInstallManager {
     return $true
 }
 
+function Resolve-LauncherArguments {
+    param(
+        [string]$EnvFile,
+        [bool]$EnvFileWasProvided,
+        [string[]]$Arguments
+    )
+
+    $forwardedArguments = New-Object System.Collections.Generic.List[string]
+
+    for ($index = 0; $index -lt $Arguments.Count; $index++) {
+        $argument = $Arguments[$index]
+
+        if ($argument -eq '--env-file') {
+            if ($EnvFileWasProvided) {
+                Write-Error "Env file was specified more than once. Use either -EnvFile or --env-file, not both."
+                exit 1
+            }
+
+            if ($index + 1 -ge $Arguments.Count -or [string]::IsNullOrWhiteSpace($Arguments[$index + 1])) {
+                Show-Usage
+                Write-Error "--env-file requires a path."
+                exit 1
+            }
+
+            $EnvFile = $Arguments[$index + 1]
+            $EnvFileWasProvided = $true
+            $index++
+            continue
+        }
+
+        if ($argument.StartsWith('--env-file=')) {
+            if ($EnvFileWasProvided) {
+                Write-Error "Env file was specified more than once. Use either -EnvFile or --env-file, not both."
+                exit 1
+            }
+
+            $EnvFile = $argument.Substring('--env-file='.Length)
+            if ([string]::IsNullOrWhiteSpace($EnvFile)) {
+                Show-Usage
+                Write-Error "--env-file requires a path."
+                exit 1
+            }
+
+            $EnvFileWasProvided = $true
+            continue
+        }
+
+        $forwardedArguments.Add($argument)
+    }
+
+    if ($EnvFileWasProvided -and [string]::IsNullOrWhiteSpace($EnvFile)) {
+        Show-Usage
+        Write-Error "The env file path cannot be empty."
+        exit 1
+    }
+
+    return [pscustomobject]@{
+        EnvFile = $EnvFile
+        ServerArguments = $forwardedArguments.ToArray()
+    }
+}
+
 function Wait-ForPythonLauncherCandidate {
     param(
         [int]$TimeoutSeconds = 30
@@ -174,10 +313,40 @@ if (-not (Test-Path -LiteralPath $ServerScript -PathType Leaf)) {
     exit 1
 }
 
-if (-not (Test-Path -LiteralPath $WebotsHome -PathType Container)) {
-    Write-Error "Webots installation not found at: $WebotsHome`nSet WEBOTS_HOME to your native Windows Webots installation."
-    exit 1
+$resolvedLauncherArguments = Resolve-LauncherArguments `
+    -EnvFile $EnvFile `
+    -EnvFileWasProvided ($PSBoundParameters.ContainsKey('EnvFile')) `
+    -Arguments $ServerArguments
+
+$EnvFile = $resolvedLauncherArguments.EnvFile
+$ServerArguments = $resolvedLauncherArguments.ServerArguments
+
+$envFileValues = @{}
+if ($EnvFile) {
+    $envFileValues = Import-EnvFileValues -Path $EnvFile
 }
+
+if (-not $PSBoundParameters.ContainsKey('WebotsHome')) {
+    if ($envFileValues.ContainsKey('WEBOTS_HOME') -and -not [string]::IsNullOrWhiteSpace($envFileValues['WEBOTS_HOME'])) {
+        $WebotsHome = $envFileValues['WEBOTS_HOME']
+    } elseif (-not [string]::IsNullOrWhiteSpace($env:WEBOTS_HOME)) {
+        $WebotsHome = $env:WEBOTS_HOME
+    }
+}
+
+if (-not $PSBoundParameters.ContainsKey('WebotsSharedHostDir') -and $envFileValues.ContainsKey('WEBOTS_SHARED_HOST_DIR') -and -not [string]::IsNullOrWhiteSpace($envFileValues['WEBOTS_SHARED_HOST_DIR'])) {
+    $WebotsSharedHostDir = $envFileValues['WEBOTS_SHARED_HOST_DIR']
+}
+
+if ([string]::IsNullOrWhiteSpace($WebotsSharedHostDir)) {
+    if ($EnvFile) {
+        Write-Error "WEBOTS_SHARED_HOST_DIR is required in $EnvFile"
+        exit 1
+    }
+    $WebotsSharedHostDir = Join-Path ([System.IO.Path]::GetTempPath()) "ros2-desktop-vnc-webots-shared"
+}
+
+$WebotsHome = Resolve-WebotsHome -ExplicitWebotsHome $WebotsHome
 
 $webotsExecutable = Get-WebotsExecutablePath -WebotsHome $WebotsHome
 if (-not $webotsExecutable) {
@@ -188,7 +357,7 @@ The Windows helper looked for:
   - $([System.IO.Path]::Combine($WebotsHome, 'msys64\mingw64\bin\webots.exe'))
   - $([System.IO.Path]::Combine($WebotsHome, 'webotsw.exe'))
   - $([System.IO.Path]::Combine($WebotsHome, 'webots.exe'))
-If your installation lives elsewhere, re-run the script with -WebotsHome or set WEBOTS_HOME first.
+If your installation lives elsewhere, re-run the script with -WebotsHome or set WEBOTS_HOME explicitly.
 "@
     exit 1
 }
@@ -200,6 +369,9 @@ $env:WEBOTS_EXECUTABLE = $webotsExecutable
 $env:WEBOTS_SHARED_HOST_DIR = $WebotsSharedHostDir
 
 Write-Host "Launching repository-local Webots host server..."
+if ($EnvFile) {
+    Write-Host "  ENV_FILE=$EnvFile"
+}
 
 $pythonCandidate = Get-PythonLauncherCandidate
 if (-not $pythonCandidate) {

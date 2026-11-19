@@ -7,27 +7,51 @@ Niryo sont chargés automatiquement avant le workspace du TP.
 
 ## Construire et lancer
 
-Depuis la racine du dépôt, construire d'abord l'image TB3 avec son
-`build.sh` ou son `build.ps1` si le tag local
-`ros2-desktop-vnc:jazzy-webots-tb3` n'est pas encore disponible. Puis lancer :
+Depuis la racine du dépôt, sous macOS ou Linux :
 
 ```sh
-docker build -t ros2-desktop-vnc:jazzy-webots-tb3-ned2 jazzy-webots-tb3-ned2
+bash jazzy-webots-tb3-ned2/build.sh
 ```
+
+Sous Windows PowerShell :
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\jazzy-webots-tb3-ned2\build.ps1
+```
+
+Si la clé privée `jazzy-webots-tb3/ssh/id_ed25519_tb3_tp` est présente, le
+script construit l'image TB3 avec cette clé via le secret BuildKit existant.
+Sinon, il réutilise le tag TB3 local s'il existe, ou construit l'image TB3.
+L'image Ned2 hérite de la clé SSH intégrée à l'image TB3. La clé privée est
+ignorée par Git. La [clé publique](../jazzy-webots-tb3/ssh/id_ed25519_tb3_tp.pub)
+est versionnée.
 
 Le Dockerfile accepte `--build-arg BASE_IMAGE=…` pour partir d'un autre tag
-de la variante TB3. Compose reprend les montages et les réglages du TB3. Avec
-le fichier d'environnement macOS, par exemple :
+de la variante TB3 lors d'un `docker build` direct. Compose reprend les montages
+et les réglages du TB3. Par exemple, avec le fichier d'environnement macOS :
 
 ```sh
-docker compose --env-file jazzy-webots-tb3/env.macos -f jazzy-webots-tb3-ned2/docker-compose.yaml up -d
+docker compose --env-file env.macos -f jazzy-webots-tb3-ned2/docker-compose.yaml up -d
 ```
 
-Sous Windows ou Linux, utiliser `env.windows` ou `env.linux` du dossier TB3.
+Sous Windows ou Linux, utiliser `env.windows` ou `env.linux` à la racine du dépôt.
 Ouvrir le bureau sur `http://127.0.0.1:6080`. Arrêter l'ancien service s'il
-utilise déjà ce port. Pour la simulation, démarrer le serveur Webots natif
-avec le [lanceur de la variante TB3](../jazzy-webots-tb3/README.md#start-native-webots-on-the-host)
-et le même fichier d'environnement.
+utilise déjà ce port.
+
+## Démarrer Webots sur l’hôte
+
+Depuis la racine du dépôt, lancer le [serveur Webots commun](../local_webots_server/README.md)
+dans un terminal de l’hôte. Utiliser le même fichier d’environnement que pour Compose.
+
+```sh
+sh local_webots_server/run_webots_host.sh --env-file env.macos
+```
+
+Sous Linux, remplacer `env.macos` par `env.linux`. Sous Windows PowerShell :
+
+```powershell
+.\local_webots_server\run_webots_host.cmd --env-file env.windows
+```
 
 ## Connecter les robots
 

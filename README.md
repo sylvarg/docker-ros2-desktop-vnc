@@ -2,13 +2,15 @@
 
 This repository contains several ROS 2 desktop image variants exposed through noVNC. Detailed documentation lives alongside each variant in its own directory.
 
+The external Webots variants share the [native Webots host launcher](./local_webots_server/README.md) and the `env.*` profiles in the repository root.
+
 ## Variant Documentation
 
 - [`humble/`](./humble/README.md): historical version derived from the original upstream repository
 - [`jazzy-webots/`](./jazzy-webots/README.md): heavily reworked ROS 2 Jazzy image with embedded Webots support on `amd64` and a host-run `external` Webots workflow for macOS and Windows
 - [`jazzy-webots-tb3/`](./jazzy-webots-tb3/README.md): TurtleBot3 image for robotics labs built from the current Jazzy sources, with host-run Webots only, a dedicated wallpaper and an optional SSH key for lab robots
 - [`jazzy-webots-tb3-ned2/`](./jazzy-webots-tb3-ned2/README.md): extends the TurtleBot3 image with MoveIt 2 and the Niryo driver for real and simulated Ned2 arms
-- [`rosconfr/`](./rosconfr/README.md): ROSCon France image variant built on top of `jazzy-webots`
+- [`jazzy-webots-rosconfr/`](./jazzy-webots-rosconfr/README.md): ROSCon France image variant built on top of `jazzy-webots`
 
 ## Repository Contents
 

@@ -37,3 +37,7 @@ COPY --chmod=644 ./config/tb3_zenoh.json5 ${ROS_DESKTOP_VNC_DIR}/tb3_zenoh.json5
 # Accept older TB3 parent tags and let the Ned2 shell overlay define zenoh.
 RUN sed -i -e 's/ROBOT_IP/TB3_IP/g' -e '/^alias zenoh=/d' \
         "${ROS_DESKTOP_VNC_DIR}/bashrc.sh" /etc/skel/.bashrc /root/.bashrc
+
+COPY --chmod=644 ./background/wallpaper_tb3_ned2.png /usr/local/share/ros-desktop-vnc/background/wallpaper_tb3_ned2.png
+COPY --chmod=644 ./config/91_ros2-desktop-vnc-ned2.gschema.override /usr/share/glib-2.0/schemas/91_ros2-desktop-vnc-ned2.gschema.override
+RUN glib-compile-schemas /usr/share/glib-2.0/schemas

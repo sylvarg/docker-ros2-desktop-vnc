@@ -94,7 +94,8 @@ copied to `~/.ssh/id_rsa_tb3` at startup, along with its derived public key at
 The entrypoint enforces `700` on `~/.ssh` and `600` on the private key and config.
 Existing key and config files are preserved; if an existing config does not
 select the lab key, use `ssh -i ~/.ssh/id_rsa_tb3 user@robot-address` explicitly.
-Keep the original private key outside the repository and build context.
+Git tracks the [lab public key](./ssh/id_ed25519_tb3_tp.pub) and ignores the
+private key in `ssh/`. The Docker build context excludes the `ssh/` directory.
 
 Compose runs the image produced by the build script. To rebuild it with the
 key, use `build.sh` / `build.ps1` with the secret and its fingerprint again.
@@ -103,16 +104,16 @@ BuildKit secret contents alone do not invalidate cached layers.
 
 ## Configure and start the desktop
 
-Edit the appropriate `env.macos`, `env.linux` or `env.windows` template with your
-host paths. Both `ROS2_WS_SRC_HOST_DIR` and `WEBOTS_SHARED_HOST_DIR` must be set;
-create the workspace source directory and shared directory before starting.
+Use the `env.macos`, `env.linux` or `env.windows` profile at the repository root.
+Set `ROS2_WS_SRC_HOST_DIR` and `WEBOTS_SHARED_HOST_DIR` to your host paths and
+create both directories before starting.
 `WEBOTS_HOME` may stay empty when Webots is installed in its usual host location.
 
-For example on macOS, from this directory:
+From the repository root on macOS, create the host directories and start Compose.
 
 ```sh
 mkdir -p /Users/your-user/ros2_ws/src /tmp/ros2-desktop-vnc-webots-shared
-docker compose --env-file env.macos up -d
+docker compose --env-file env.macos -f jazzy-webots-tb3/docker-compose.yaml up -d
 ```
 
 On Linux, use `--env-file env.linux`; on Windows, use `--env-file env.windows`.
@@ -120,16 +121,17 @@ Open <http://localhost:6080> for the desktop. `WEBOTS_BACKEND=external` is alrea
 defined in the image, and the Compose file supplies the shared folder mapping.
 The variable alone does not create the Docker bind mount.
 
-Only `~/ros2_ws/src` and the Webots exchange directory are mounted from the host.
+Compose mounts `~/ros2_ws/src` and the Webots exchange directory
+`~/.webots_shared` from the host.
 User workspace `build/`, `install/`, `log/` and other home files are stored in the
 container and are lost if it is removed. Run `colcon build` in `~/ros2_ws` as needed;
 the resulting workspace is sourced automatically in new terminals.
 
 ## Start native Webots on the host
 
-Install native Webots and Python 3 on the host. The host helpers are copied from
-the ROSCon variant, including its env-file support and Windows Python detection.
-Run them in a separate host terminal with the same env file as Compose:
+Install native Webots and Python 3 on the host. From the repository root,
+run the [shared host launcher](../local_webots_server/README.md)
+in a separate host terminal. Use the same env file as Compose.
 
 ```sh
 sh local_webots_server/run_webots_host.sh --env-file env.macos
