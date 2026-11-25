@@ -12,6 +12,51 @@ For now, the following tags are available, depending on the architecture and the
 - `sylvarg/docker-ros2-desktop-vnc:jazzy-webots-embedded`: AMD64 **only** version with Webots installed inside the image
 - `sylvarg/docker-ros2-desktop-vnc:jazzy-webots-external`: AMD64 **and** ARM64 version without Webots installed inside the image ; it has been tested on macOS 26 for now and it allows a native host Webots installation to be controlled and to communicate with the container. The same container-side workflow is now documented for Windows with a dedicated PowerShell helper, although it still needs validation on a real Windows setup. AFAIK this remains the only practical way to work with Webots on macOS (note that thanks to emulation, the `jazzy-webots-embedded` version actually works on macOS, but is very very (very) slow).
 
+## Build images
+
+From the repository root, with Docker running, build the host-Webots variant
+on macOS or Linux:
+
+```sh
+bash jazzy-webots/build.sh
+# Equivalent explicit choice:
+bash jazzy-webots/build.sh external
+```
+
+This produces `ros2-desktop-vnc:jazzy-webots-external` for Docker's default target
+architecture. For Webots inside the Linux container:
+
+```sh
+bash jazzy-webots/build.sh embedded
+```
+
+This produces `ros2-desktop-vnc:jazzy-webots-embedded`, always targeting
+`linux/amd64`. The script maps the public name `embedded` to the Dockerfile's
+`WEBOTS_BACKEND=bundled` build argument.
+
+Windows PowerShell (Linux containers):
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\jazzy-webots\build.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\jazzy-webots\build.ps1 -WebotsVariant embedded
+```
+
+Append Docker build options after the variant, for example:
+
+```sh
+bash jazzy-webots/build.sh external --no-cache --build-arg INSTALL_PACKAGE=desktop
+```
+
+The PowerShell script accepts the same Docker arguments after
+`-WebotsVariant external`. Backend selection and the embedded platform are
+controlled by the script. Build context paths are resolved relative to the
+script, so these commands also work from another current directory. From
+inside `jazzy-webots/`, use `bash build.sh` or shorten the script path in the
+PowerShell command to `.\build.ps1`.
+
+After building, start the chosen image using the Compose instructions below.
+For an already-built image, use `up -d` instead of `up --build`.
+
 ## Quick Start
 
 ### Embedded (`amd64` only) variant

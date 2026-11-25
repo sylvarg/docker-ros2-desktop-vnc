@@ -21,6 +21,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\jazzy-webots-tb3-ned2\
 
 Si la clé privée `jazzy-webots-tb3/ssh/id_ed25519_tb3_tp` est présente, le
 script construit l'image TB3 avec cette clé via le secret BuildKit existant.
+La détection de la clé et le calcul de son empreinte sont assurés par le
+script de build TB3 commun.
 Sinon, il réutilise le tag TB3 local s'il existe, ou construit l'image TB3.
 L'image Ned2 hérite de la clé SSH intégrée à l'image TB3. La clé privée est
 ignorée par Git. La [clé publique](../jazzy-webots-tb3/ssh/id_ed25519_tb3_tp.pub)

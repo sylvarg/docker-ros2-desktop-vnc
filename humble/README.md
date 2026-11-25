@@ -13,7 +13,7 @@ An example `docker-compose.yaml` is provided, e.g.
 ```
 services:
   ros-desktop-vnc:
-    image: sylvarg/ros2-desktop-vnc:humble
+    image: sylar/ros2-desktop-vnc:humble
     ## seccomp profile must be deactivated for Ubuntu 22.04
     security_opt:
       - seccomp:unconfined
@@ -44,12 +44,34 @@ A `id_rsa_turtlebot3.pub` file has been added to the repository to allow SSH log
 
 ## Build
 
-To build Docker image from this Dockerfile, run the following command.
+From the repository root, with Docker running, build a local image on macOS or Linux:
 
-* humble
 ```sh
-# using "docker buildx (multiarch)"
-cd humble && docker buildx build --push --platform=linux/arm64,linux/amd64 --progress=plain -t sylar/ros2-desktop-vnc:humble .
+bash humble/build.sh
+```
+
+Windows PowerShell (Docker configured for Linux containers):
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\humble\build.ps1
+```
+
+The scripts tag the result as `ros2-desktop-vnc:humble` and
+`sylar/ros2-desktop-vnc:humble`, the historical name used by the supplied Compose
+file. Docker chooses the target architecture by default. Extra Docker build
+arguments are forwarded, for example:
+
+```sh
+bash humble/build.sh --no-cache
+```
+
+The build context is always this directory, even when the script is called from
+elsewhere. From inside `humble/`, use `bash build.sh` or shorten the script path
+in the PowerShell command to `.\build.ps1`.
+Configure the workspace mount in `docker-compose.yaml`, then start the image:
+
+```sh
+docker compose -f humble/docker-compose.yaml up -d
 ```
 
 ## Docker tags on hub.docker.com

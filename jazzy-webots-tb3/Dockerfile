@@ -2,7 +2,7 @@
 
 # build.sh / build.ps1 build this parent from the current jazzy-webots sources,
 # with native Webots omitted. No published parent image is required.
-ARG BASE_IMAGE=ros2-desktop-vnc:jazzy-webots-tb3-base
+ARG BASE_IMAGE=ros2-desktop-vnc:jazzy-webots-external
 FROM ${BASE_IMAGE}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]

@@ -56,11 +56,20 @@ Windows PowerShell:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-The script first builds `ros2-desktop-vnc:jazzy-webots-tb3-base` from the sibling
-`jazzy-webots/` directory with external Webots, then builds and loads
-`ros2-desktop-vnc:jazzy-webots-tb3`. It uses the current checkout rather than a
+The script first calls the sibling `jazzy-webots/build.sh` (or `build.ps1`) to
+build `ros2-desktop-vnc:jazzy-webots-external`, then builds and loads
+`ros2-desktop-vnc:jazzy-webots-tb3`. The TB3 Dockerfile uses that standard external
+tag as its default `BASE_IMAGE`. It uses the current checkout rather than a
 potentially older published parent. Keep both directories in the repository.
 Run this script again after changing the parent image sources.
+
+The local image inheritance is:
+
+```text
+ros2-desktop-vnc:jazzy-webots-external  (jazzy-webots/Dockerfile, external)
+└── ros2-desktop-vnc:jazzy-webots-tb3   (jazzy-webots-tb3/Dockerfile)
+    └── ros2-desktop-vnc:jazzy-webots-tb3-ned2
+```
 
 The Dockerfile can also be built directly once the local parent exists. Its
 `BASE_IMAGE` build argument can select an already-built compatible Jazzy external
@@ -68,12 +77,20 @@ image when needed.
 
 ## Optional SSH key for the labs
 
-The parent entrypoint already handles SSH initialization. To supply a key for lab robots,
-pass a BuildKit secret to the build script:
+The build scripts automatically detect the private key
+`ssh/id_ed25519_tb3_tp` next to this variant's Dockerfile. When it exists,
+`bash build.sh` and `build.ps1` pass it as the `tb3_ssh_key` BuildKit secret and
+derive its public fingerprint for cache invalidation. A separate `.pub` file
+is not required for this detection. If the private key is absent, the image is
+built without a lab key.
+
+The parent entrypoint handles SSH initialization. To use a key at another path,
+pass its secret and fingerprint explicitly; an explicit `tb3_ssh_key` secret
+takes precedence over the automatically detected key:
 
 ```sh
 labs_key="$HOME/.ssh/id_ed25519_tb3_tp"
-labs_fingerprint="$(ssh-keygen -lf "$labs_key.pub" | awk '{print $2}')"
+labs_fingerprint="$(ssh-keygen -y -f "$labs_key" | ssh-keygen -lf - | awk '{print $2}')"
 bash build.sh \
   --secret "id=tb3_ssh_key,src=$labs_key" \
   --build-arg "TB3_SSH_KEY_FINGERPRINT=$labs_fingerprint"
@@ -83,7 +100,7 @@ Windows PowerShell:
 
 ```powershell
 $LabsKey = Join-Path $HOME ".ssh\id_ed25519_tb3_tp"
-$LabsFingerprint = ((ssh-keygen -lf "$LabsKey.pub") -split '\s+')[1]
+$LabsFingerprint = ((ssh-keygen -y -f "$LabsKey" | ssh-keygen -lf -) -split '\s+')[1]
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 --secret "id=tb3_ssh_key,src=$LabsKey" --build-arg "TB3_SSH_KEY_FINGERPRINT=$LabsFingerprint"
 ```
 
@@ -97,10 +114,11 @@ select the lab key, use `ssh -i ~/.ssh/id_rsa_tb3 user@robot-address` explicitly
 Git tracks the [lab public key](./ssh/id_ed25519_tb3_tp.pub) and ignores the
 private key in `ssh/`. The Docker build context excludes the `ssh/` directory.
 
-Compose runs the image produced by the build script. To rebuild it with the
-key, use `build.sh` / `build.ps1` with the secret and its fingerprint again.
-The public fingerprint invalidates the SSH build layer when the key changes;
-BuildKit secret contents alone do not invalidate cached layers.
+Compose runs the image produced by the build script. To rebuild with the key
+at the conventional path, run `build.sh` / `build.ps1` again without extra arguments.
+For a custom key path, supply the secret and fingerprint again. The public
+fingerprint invalidates the SSH build layer when the key changes; BuildKit
+secret contents alone do not invalidate cached layers.
 
 ## Configure and start the desktop
 
